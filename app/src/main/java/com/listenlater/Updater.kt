@@ -19,8 +19,9 @@ data class UpdateInfo(
 )
 
 /**
- * Update check against this app's public GitHub releases. It only runs when the user has it switched on,
- * only talks to github.com and githubusercontent.com over HTTPS, and every failure ends quietly or with a plain message.
+ * Update check against this app's public GitHub releases. It runs automatically each time the app
+ * cold-opens (there is no switch), only talks to github.com and githubusercontent.com over HTTPS,
+ * and every failure ends quietly or with a plain message.
  */
 object Updater {
     const val API = "https://api.github.com/repos/MtndaleRedneck/Listen-Later/releases/latest"
