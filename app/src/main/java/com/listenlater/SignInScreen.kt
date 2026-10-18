@@ -31,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +83,13 @@ private fun Modifier.autofillHints(
     val autofill = LocalAutofill.current
     val tree = LocalAutofillTree.current
     val node = remember { AutofillNode(autofillTypes = types, onFill = onFill) }
+    DisposableEffect(node) {
+        onDispose {
+            // Compose 1.6's AutofillTree exposes no removal (minusAssign came later),
+            // so dispose logically: no bounds means the node is never offered a fill.
+            node.boundingBox = null
+        }
+    }
     this
         .onGloballyPositioned {
             node.boundingBox = it.boundsInWindow()
@@ -141,7 +149,7 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
     var username by remember { mutableStateOf(store.username ?: "") }
     var password by remember { mutableStateOf(if (store.rememberMe) store.savedPassword ?: "" else "") }
     var showPassword by remember { mutableStateOf(false) }
-    var rememberMe by remember { mutableStateOf(true) }
+    var rememberMe by remember { mutableStateOf(store.rememberMe) }
     var captchaCode by remember { mutableStateOf("") }
     var captchaId by remember { mutableStateOf<String?>(null) }
     var captchaImage by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -257,11 +265,11 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .padding(top = 4.dp, start = 2.dp)
-                            .clickable { rememberMe = !rememberMe }
+                            .clickable { rememberMe = !rememberMe; store.rememberMe = rememberMe }
                     ) {
                         Checkbox(
                             checked = rememberMe,
-                            onCheckedChange = { rememberMe = it },
+                            onCheckedChange = { rememberMe = it; store.rememberMe = it },
                             colors = CheckboxDefaults.colors(
                                 checkedColor = Sage,
                                 uncheckedColor = Muted,

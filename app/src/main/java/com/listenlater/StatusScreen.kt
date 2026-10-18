@@ -265,7 +265,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.weight(1f)) {
                     Column(
-                        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 34.dp),
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                            .padding(horizontal = 18.dp, vertical = 34.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text("Nothing here yet", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC)

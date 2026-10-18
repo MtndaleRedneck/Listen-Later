@@ -31,13 +31,13 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GrowingSpinnerIndicator(state: PullToRefreshState, modifier: Modifier = Modifier) {
+    if (state.progress <= 0f && !state.isRefreshing) return // nothing shown, no animation running
     val spin by rememberInfiniteTransition(label = "ptrSpin").animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
         label = "ptrSpinAngle"
     )
-    if (state.progress <= 0f && !state.isRefreshing) return
     Box(modifier.padding(top = 18.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(28.dp)) {
             val frac = if (state.isRefreshing) 1f else state.progress.coerceIn(0f, 1f)

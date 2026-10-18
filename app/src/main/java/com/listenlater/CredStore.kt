@@ -57,9 +57,13 @@ class CredStore(context: Context) {
         get() = prefs.getInt("attempts", 0)
         set(v) = prefs.edit().putInt("attempts", v).apply()
 
+    /** On by default; the user's last choice sticks. Turning it off wipes the saved password. */
     var rememberMe: Boolean
-        get() = prefs.getBoolean("rememberMe", false)
-        set(v) = prefs.edit().putBoolean("rememberMe", v).apply()
+        get() = prefs.getBoolean("rememberMe", true)
+        set(v) {
+            if (v) prefs.edit().putBoolean("rememberMe", true).apply()
+            else prefs.edit().putBoolean("rememberMe", false).remove("password").apply()
+        }
 
     /** Only populated while rememberMe is on; never log this. */
     var savedPassword: String?
