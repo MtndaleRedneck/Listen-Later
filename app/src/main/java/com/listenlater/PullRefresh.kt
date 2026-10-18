@@ -20,6 +20,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 
 /**
@@ -62,4 +63,15 @@ fun GrowingSpinnerIndicator(state: PullToRefreshState, modifier: Modifier = Modi
             )
         }
     }
+}
+
+/**
+ * Full pull-down variant (NOT shipped in 1.2 - kept for a possible 1.2.1 hotfix):
+ * the content rides down with the finger while the spinner is revealed in the gap.
+ * Applied to the scrolling content; pairs with GrowingSpinnerIndicator.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+fun Modifier.pullDownOffset(state: PullToRefreshState): Modifier = graphicsLayer {
+    val thresholdPx = 80.dp.toPx()
+    translationY = (state.progress * thresholdPx).coerceAtMost(140.dp.toPx())
 }

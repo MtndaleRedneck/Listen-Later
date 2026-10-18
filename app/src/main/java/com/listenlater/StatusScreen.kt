@@ -235,7 +235,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
 
     Box(Modifier.fillMaxSize().nestedScroll(ptrState.nestedScrollConnection)) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
+            modifier = Modifier.fillMaxSize().pullDownOffset(ptrState).verticalScroll(rememberScrollState()).padding(16.dp)
         ) {
             Spacer(Modifier.height(2.dp))
             AppHeader()
