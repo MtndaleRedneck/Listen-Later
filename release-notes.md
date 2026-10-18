@@ -1,7 +1,7 @@
-## What's new in 1.1.0
+## What's new in 1.2.0
 
-- Update check: on a cold open, Listen Later quietly checks GitHub for a newer release. If one is available, a pop-up shows the release notes with options to update, later, or skip this version.
-- Pull-to-refresh on the status screen.
-- Header on the status screen with the app icon and name.
+- Show/hide toggle on the password field.
+- Password managers can fill the sign-in fields (Android autofill).
+- App icon and name header on the sign-in screen, with clearer wording.
 
 Android 12+. See the README for setup.

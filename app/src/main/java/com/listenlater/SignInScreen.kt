@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,18 +22,33 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.AutofillNode
+import androidx.compose.ui.autofill.AutofillType
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalAutofill
+import androidx.compose.ui.platform.LocalAutofillTree
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -52,6 +68,30 @@ private fun normalizeServer(input: String): String {
     return s
 }
 
+// Android autofill (password managers) hooks for BasicTextField. Registers a node with the
+// autofill tree while the field exists and asks the service to fill it when it gains focus.
+@OptIn(ExperimentalComposeUiApi::class)
+private fun Modifier.autofillHints(
+    types: List<AutofillType>,
+    onFill: (String) -> Unit
+): Modifier = composed {
+    if (types.isEmpty()) return@composed this
+    val autofill = LocalAutofill.current
+    val tree = LocalAutofillTree.current
+    val node = remember { AutofillNode(autofillTypes = types, onFill = onFill) }
+    DisposableEffect(node) {
+        tree += node
+        onDispose { tree -= node }
+    }
+    this
+        .onGloballyPositioned { node.boundingBox = it.boundsInWindow() }
+        .onFocusChanged { focus ->
+            if (focus.isFocused) autofill?.requestAutofillForNode(node)
+            else autofill?.cancelAutofillForNode(node)
+        }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun Field(
     label: String,
@@ -60,25 +100,33 @@ private fun Field(
     hint: String,
     secret: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
+    autofillTypes: List<AutofillType> = emptyList(),
+    trailing: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
         Text(label, fontSize = 11.sp, color = Muted, letterSpacing = 1.sp)
         Spacer(Modifier.height(4.dp))
         Surface(color = Card2, shape = RoundedCornerShape(14.dp)) {
-            BasicTextField(
-                value = value,
-                onValueChange = onChange,
-                singleLine = true,
-                textStyle = TextStyle(color = TextC, fontSize = 15.sp),
-                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
-                modifier = Modifier.fillMaxWidth().padding(14.dp),
-                decorationBox = { inner ->
-                    if (value.isEmpty()) Text(hint, color = Muted, fontSize = 15.sp)
-                    inner()
-                }
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onChange,
+                    singleLine = true,
+                    textStyle = TextStyle(color = TextC, fontSize = 15.sp),
+                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                    visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+                    modifier = Modifier
+                        .weight(1f)
+                        .autofillHints(autofillTypes, onChange)
+                        .padding(14.dp),
+                    decorationBox = { inner ->
+                        if (value.isEmpty()) Text(hint, color = Muted, fontSize = 15.sp)
+                        inner()
+                    }
+                )
+                trailing?.invoke()
+            }
         }
     }
 }
@@ -89,12 +137,27 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
     var server by remember { mutableStateOf(store.server ?: "") }
     var username by remember { mutableStateOf(store.username ?: "") }
     var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
     var captchaCode by remember { mutableStateOf("") }
     var captchaId by remember { mutableStateOf<String?>(null) }
     var captchaImage by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var captchaOn by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+
+    // Launcher icon drawn into a bitmap once, for the header above the card.
+    val context = LocalContext.current
+    val appIcon = remember {
+        context.getDrawable(R.mipmap.ic_launcher_round)?.let { d ->
+            val w = d.intrinsicWidth.coerceAtLeast(1)
+            val h = d.intrinsicHeight.coerceAtLeast(1)
+            val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            d.setBounds(0, 0, w, h)
+            d.draw(canvas)
+            bmp.asImageBitmap()
+        }
+    }
 
     fun refreshCaptcha(serverUrl: String) {
         scope.launch {
@@ -132,91 +195,123 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Card),
-            shape = RoundedCornerShape(20.dp)
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 22.dp, top = 22.dp)
         ) {
-            Column(Modifier.padding(18.dp)) {
-                Text("Sign in", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextC)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "When your sign-in expires, you'll land back here with a new picture.",
-                    fontSize = 13.sp, color = Muted
+            appIcon?.let {
+                Image(
+                    bitmap = it,
+                    contentDescription = null,
+                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
                 )
-                Spacer(Modifier.height(18.dp))
-                Field("SERVER", server, { server = it }, "https://your-server.example",
-                    keyboardType = KeyboardType.Uri)
-                Spacer(Modifier.height(12.dp))
-                Field("USERNAME", username, { username = it }, "username")
-                Spacer(Modifier.height(12.dp))
-                Field("PASSWORD", password, { password = it }, "password", secret = true,
-                    keyboardType = KeyboardType.Password)
-                if (captchaOn && captchaImage != null) {
+                Spacer(Modifier.width(12.dp))
+            }
+            Text("Listen Later", fontSize = 21.sp, fontWeight = FontWeight.Bold, color = TextC)
+        }
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Card),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(Modifier.padding(18.dp)) {
+                    Text("Sign in", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextC)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Sign in to your PigeonPod server. You'll need to do this again once in a while.",
+                        fontSize = 13.sp, color = Muted
+                    )
+                    Spacer(Modifier.height(18.dp))
+                    Field("SERVER", server, { server = it }, "https://your-server.example",
+                        keyboardType = KeyboardType.Uri)
                     Spacer(Modifier.height(12.dp))
-                    Row {
-                        Surface(
-                            color = Card2,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.width(150.dp).height(56.dp)
-                        ) {
-                            Image(
-                                bitmap = captchaImage!!.asImageBitmap(),
-                                contentDescription = "captcha",
-                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
+                    Field("USERNAME", username, { username = it }, "username",
+                        autofillTypes = listOf(AutofillType.Username))
+                    Spacer(Modifier.height(12.dp))
+                    Field("PASSWORD", password, { password = it }, "password",
+                        secret = !showPassword,
+                        keyboardType = KeyboardType.Password,
+                        autofillTypes = listOf(AutofillType.Password),
+                        trailing = {
+                            IconButton(
+                                onClick = { showPassword = !showPassword },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(if (showPassword) R.drawable.ic_eye_off else R.drawable.ic_eye),
+                                    contentDescription = if (showPassword) "Hide password" else "Show password",
+                                    tint = Muted,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        })
+                    if (captchaOn && captchaImage != null) {
+                        Spacer(Modifier.height(12.dp))
+                        Row {
+                            Surface(
+                                color = Card2,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.width(150.dp).height(56.dp)
+                            ) {
+                                Image(
+                                    bitmap = captchaImage!!.asImageBitmap(),
+                                    contentDescription = "captcha",
+                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Field(
+                                "TYPE THE LETTERS", captchaCode, { captchaCode = it }, "",
+                                modifier = Modifier.weight(1f)
                             )
                         }
-                        Spacer(Modifier.width(10.dp))
-                        Field(
-                            "TYPE THE LETTERS", captchaCode, { captchaCode = it }, "",
-                            modifier = Modifier.weight(1f)
-                        )
                     }
-                }
-                error?.let {
-                    Spacer(Modifier.height(10.dp))
-                    Text(it, color = Yellow, fontSize = 13.sp)
-                }
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        val normalized = normalizeServer(server)
-                        when {
-                            normalized == "http://" -> error = "HTTPS only - use an https:// address."
-                            normalized.length <= 8 -> error = "Enter your server address."
-                            username.isBlank() -> error = "Enter your username."
-                            password.isEmpty() -> error = "Enter your password."
-                            captchaOn && captchaCode.isBlank() -> error = "Type the letters in the picture."
-                            else -> {
-                                loading = true
-                                error = null
-                                scope.launch {
-                                    try {
-                                        val api = Api(normalized, null)
-                                        val token = withContext(Dispatchers.IO) {
-                                            api.login(username.trim(), password, captchaId, captchaCode.trim())
+                    error?.let {
+                        Spacer(Modifier.height(10.dp))
+                        Text(it, color = Yellow, fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            val normalized = normalizeServer(server)
+                            when {
+                                normalized == "http://" -> error = "HTTPS only - use an https:// address."
+                                normalized.length <= 8 -> error = "Enter your server address."
+                                username.isBlank() -> error = "Enter your username."
+                                password.isEmpty() -> error = "Enter your password."
+                                captchaOn && captchaCode.isBlank() -> error = "Type the letters in the picture."
+                                else -> {
+                                    loading = true
+                                    error = null
+                                    scope.launch {
+                                        try {
+                                            val api = Api(normalized, null)
+                                            val token = withContext(Dispatchers.IO) {
+                                                api.login(username.trim(), password, captchaId, captchaCode.trim())
+                                            }
+                                            store.markLoggedIn(normalized, username.trim(), token)
+                                            loading = false
+                                            onLoggedIn()
+                                        } catch (e: Exception) {
+                                            loading = false
+                                            error = e.message ?: "Login failed."
+                                            refreshCaptcha(normalized)
                                         }
-                                        store.markLoggedIn(normalized, username.trim(), token)
-                                        loading = false
-                                        onLoggedIn()
-                                    } catch (e: Exception) {
-                                        loading = false
-                                        error = e.message ?: "Login failed."
-                                        refreshCaptcha(normalized)
                                     }
                                 }
                             }
-                        }
-                    },
-                    enabled = !loading,
-                    colors = ButtonDefaults.buttonColors(containerColor = Sage, contentColor = androidx.compose.ui.graphics.Color.White),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (loading) "Signing in..." else "Log in", fontWeight = FontWeight.SemiBold)
+                        },
+                        enabled = !loading,
+                        colors = ButtonDefaults.buttonColors(containerColor = Sage, contentColor = androidx.compose.ui.graphics.Color.White),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (loading) "Signing in..." else "Log in", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
