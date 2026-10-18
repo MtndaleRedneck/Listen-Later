@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class UpdaterTest {
-    private val base = "https://github.com/MtndaleRedneck/ListenLater/releases/download/v1.8.0/ListenLater-v1.8.0.apk"
+    private val base = "https://github.com/MtndaleRedneck/Listen-Later/releases/download/v1.8.0/ListenLater-v1.8.0.apk"
     private val hex = "a".repeat(64)
 
     private fun rel(tag: String = "v1.8.0", draft: Boolean = false, pre: Boolean = false, body: String = "- One\n- Two", asset: String = "ListenLater-v1.8.0.apk", url: String = base, size: Long = 1000, digest: String? = "sha256:$hex"): String {
