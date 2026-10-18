@@ -19,7 +19,8 @@ object VideoUrl {
 
     fun extractVideoId(sharedText: String?): String? {
         if (sharedText.isNullOrBlank()) return null
-        val tokens = sharedText.trim().split(Regex("\\s+")).map { raw ->
+        val trimmed = sharedText.trim()
+        val tokens = trimmed.split(Regex("\\s+")).map { raw ->
             raw.trim().trim('<', '>', '"', '\'', '(', ')', ',', '.', '!', ';')
         }
         // URLs win: share text usually leads with the title, and any 11-letter
@@ -27,10 +28,10 @@ object VideoUrl {
         for (token in tokens) {
             fromUrlToken(token)?.let { return it }
         }
-        for (token in tokens) {
-            if (ID.matches(token)) return token
-        }
-        return null
+        // A bare ID is accepted only when it is the entire share text - with
+        // anything else around it, an 11-letter word could be a title word.
+        val whole = trimmed.trim('<', '>', '"', '\'', '(', ')', ',', '.', '!', ';')
+        return if (ID.matches(whole)) whole else null
     }
 
     private fun fromUrlToken(token: String): String? {

@@ -97,10 +97,21 @@ class VideoUrlTest {
     }
 
     @Test
-    fun bareIdFallbackWhenNoUrl() {
+    fun idMixedWithOtherTextRejected() {
+        // No URL anywhere: an 11-char token among other words is not trusted.
+        assertNull(VideoUrl.cleanSharedUrl("loved this dQw4w9WgXcQ wow"))
+    }
+
+    @Test
+    fun titleOnlyShareRejected() {
+        assertNull(VideoUrl.cleanSharedUrl("Performance review of the year"))
+    }
+
+    @Test
+    fun wholeTextBareIdAccepted() {
         assertEquals(
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            VideoUrl.cleanSharedUrl("loved this dQw4w9WgXcQ wow")
+            VideoUrl.cleanSharedUrl("  dQw4w9WgXcQ  ")
         )
     }
 }

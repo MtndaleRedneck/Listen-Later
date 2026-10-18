@@ -15,7 +15,7 @@ class ShareActivity : Activity() {
         val text = intent?.getStringExtra(Intent.EXTRA_TEXT)
         val url = VideoUrl.cleanSharedUrl(text)
         if (url == null) {
-            Toast.makeText(this, "Not a single video", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Couldn't find a video link", Toast.LENGTH_SHORT).show()
         } else {
             val store = CredStore(this)
             store.enqueueShare(url)
