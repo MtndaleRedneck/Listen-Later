@@ -35,7 +35,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -326,15 +325,18 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Feed link", fontSize = 15.sp, color = TextC)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Feed link", fontSize = 15.sp, color = TextC)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Paste into your podcast app", fontSize = 13.sp, color = Muted)
+                            }
                             Text("Copy", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.clickable { copyFeedLink() })
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            Text("Sign out", fontSize = 15.sp, color = TextC)
                             Text("Sign out", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.clickable { onSignedOut() })
                         }
@@ -345,9 +347,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Text("Sign out", fontSize = 15.sp, color = TextC)
                         Text("Sign out", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.clickable { onSignedOut() })
                     }
@@ -355,7 +356,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             }
         }
 
-        PullToRefreshContainer(ptrState, Modifier.align(Alignment.TopCenter))
+        GrowingSpinnerIndicator(ptrState, Modifier.align(Alignment.TopCenter))
     }
 
     updateUi?.let { u ->

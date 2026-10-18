@@ -1,8 +1,10 @@
 package com.listenlater
 
 import android.graphics.BitmapFactory
+import android.view.autofill.AutofillManager
 import android.util.Base64
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +21,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -135,8 +139,9 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
     val scope = rememberCoroutineScope()
     var server by remember { mutableStateOf(store.server ?: "") }
     var username by remember { mutableStateOf(store.username ?: "") }
-    var password by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf(if (store.rememberMe) store.savedPassword ?: "" else "") }
     var showPassword by remember { mutableStateOf(false) }
+    var rememberMe by remember { mutableStateOf(true) }
     var captchaCode by remember { mutableStateOf("") }
     var captchaId by remember { mutableStateOf<String?>(null) }
     var captchaImage by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -248,6 +253,25 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                                 )
                             }
                         })
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(top = 4.dp, start = 2.dp)
+                            .clickable { rememberMe = !rememberMe }
+                    ) {
+                        Checkbox(
+                            checked = rememberMe,
+                            onCheckedChange = { rememberMe = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Sage,
+                                uncheckedColor = Muted,
+                                checkmarkColor = androidx.compose.ui.graphics.Color.White
+                            ),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text("Remember me on this device", fontSize = 13.sp, color = Muted)
+                    }
                     if (captchaOn && captchaImage != null) {
                         Spacer(Modifier.height(12.dp))
                         Row {
@@ -292,7 +316,10 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                                             val token = withContext(Dispatchers.IO) {
                                                 api.login(username.trim(), password, captchaId, captchaCode.trim())
                                             }
-                                            store.markLoggedIn(normalized, username.trim(), token)
+                                            store.markLoggedIn(normalized, username.trim(), token, password, rememberMe)
+                                            // Offer Android's own "save password" prompt.
+                                            context.getSystemService(AutofillManager::class.java)?.commit()
+                                            showPassword = false
                                             loading = false
                                             onLoggedIn()
                                         } catch (e: Exception) {

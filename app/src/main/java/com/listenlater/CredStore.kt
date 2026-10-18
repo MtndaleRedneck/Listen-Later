@@ -57,8 +57,17 @@ class CredStore(context: Context) {
         get() = prefs.getInt("attempts", 0)
         set(v) = prefs.edit().putInt("attempts", v).apply()
 
-    fun markLoggedIn(server: String, username: String, token: String) {
-        prefs.edit()
+    var rememberMe: Boolean
+        get() = prefs.getBoolean("rememberMe", false)
+        set(v) = prefs.edit().putBoolean("rememberMe", v).apply()
+
+    /** Only populated while rememberMe is on; never log this. */
+    var savedPassword: String?
+        get() = prefs.getString("password", null)
+        private set(v) = prefs.edit().putString("password", v).apply()
+
+    fun markLoggedIn(server: String, username: String, token: String, password: String, remember: Boolean) {
+        val e = prefs.edit()
             .putString("server", server)
             .putString("username", username)
             .putString("token", token)
@@ -66,7 +75,9 @@ class CredStore(context: Context) {
             .putBoolean("needsLogin", false)
             .putBoolean("loginNotified", false)
             .putInt("attempts", 0)
-            .apply()
+            .putBoolean("rememberMe", remember)
+        if (remember) e.putString("password", password) else e.remove("password")
+        e.apply()
     }
 
     fun shareQueue(): List<String> {
