@@ -5,6 +5,8 @@ for a self-hosted [PigeonPod](https://github.com/aizhimou/pigeon-pod) server: it
 built-in Individual Videos feed, the server downloads it, and your podcast
 app picks it up like any episode.
 
+Inspired by the old [Listenbox](https://listenbox.app) Listen Later app (RIP).
+
 ## How it works
 
 1. Sign in once with your server address and login. When the session
@@ -36,4 +38,3 @@ Your server address, login token, and feed link are stored only in the
 Android Keystore-backed encrypted preferences on your phone. Your password
 is never stored. Nothing is sent anywhere but your own server.
 
-Inspired by the [Listenbox](https://listenbox.app) Listen Later app (RIP).
