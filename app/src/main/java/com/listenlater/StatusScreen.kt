@@ -4,9 +4,13 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +23,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -39,6 +45,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
@@ -57,6 +65,25 @@ import org.json.JSONObject
 import java.io.File
 
 const val FEED_ID = "individual-videos-youtube"
+
+private fun Drawable.toImageBitmap(): androidx.compose.ui.graphics.ImageBitmap {
+    val bmp = Bitmap.createBitmap(intrinsicWidth.coerceAtLeast(1), intrinsicHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    setBounds(0, 0, canvas.width, canvas.height)
+    draw(canvas)
+    return bmp.asImageBitmap()
+}
+
+@Composable
+private fun AppHeader() {
+    val ctx = LocalContext.current
+    val icon = remember { ctx.packageManager.getApplicationIcon(ctx.packageName).toImageBitmap() }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 18.dp)) {
+        Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)))
+        Spacer(Modifier.width(12.dp))
+        Text("Listen Later", fontSize = 21.sp, fontWeight = FontWeight.Bold, color = TextC)
+    }
+}
 
 private data class EpisodeItem(val id: String, val title: String, val status: String)
 
@@ -212,6 +239,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
         ) {
             Spacer(Modifier.height(2.dp))
+            AppHeader()
             Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
                 Column(Modifier.padding(18.dp)) {
                     Row(
