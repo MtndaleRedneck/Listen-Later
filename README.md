@@ -1,7 +1,7 @@
 # Listen Later
 
 Share a video to your podcast app. Listen Later is a tiny Android companion
-for a self-hosted PigeonPod server: it sends the video to the server's
+for a self-hosted [PigeonPod](https://github.com/aizhimou/pigeon-pod) server: it sends the video to the server's
 built-in Individual Videos feed, the server downloads it, and your podcast
 app picks it up like any episode.
 
@@ -25,7 +25,7 @@ Grab the APK from the latest release and install it. Android 12 or newer.
 
 ## Setup
 
-- A self-hosted PigeonPod server you can sign in to.
+- A self-hosted [PigeonPod](https://github.com/aizhimou/pigeon-pod) server you can sign in to.
 - Your server address (https only), username, and password. If your server
   asks for a captcha at login, the app shows the same picture.
 - Any podcast app that can subscribe to an RSS feed.
@@ -35,3 +35,5 @@ Grab the APK from the latest release and install it. Android 12 or newer.
 Your server address, login token, and feed link are stored only in the
 Android Keystore-backed encrypted preferences on your phone. Your password
 is never stored. Nothing is sent anywhere but your own server.
+
+Inspired by the [Listenbox](https://listenbox.app) Listen Later app (RIP).
