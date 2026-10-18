@@ -235,7 +235,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
 
     Box(Modifier.fillMaxSize().nestedScroll(ptrState.nestedScrollConnection)) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
+            modifier = Modifier.fillMaxSize().padding(16.dp)
         ) {
             Spacer(Modifier.height(2.dp))
             AppHeader()
@@ -262,7 +262,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
 
             if (!loading && episodes.isEmpty()) {
                 Spacer(Modifier.height(14.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
+                Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.weight(1f)) {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 34.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -279,10 +280,9 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
 
             if (episodes.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
-                    Column(Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
-                        Text("RECENTLY ADDED", fontSize = 13.sp, color = Muted, letterSpacing = 1.6.sp,
-                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.weight(1f)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp)) {
                         episodes.forEach { ep ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -292,7 +292,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 Text(ep.title, fontSize = 15.sp, color = TextC, modifier = Modifier.weight(1f).padding(end = 10.dp))
                                 when {
                                     ep.status == "COMPLETED" ->
-                                        Text("Ready", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold)
+                                        Text("In feed", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold)
                                     ep.status == "FAILED" ->
                                         Text("Retry", fontSize = 13.sp, color = Yellow, fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.clickable {
@@ -310,8 +310,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                                     }
                                                 }
                                             })
-                                    else ->
+                                    ep.status == "PENDING" || ep.status == "DOWNLOADING" ->
                                         Text("Downloading", fontSize = 13.sp, color = Muted)
+                                    else -> // READY: no file on the server, not in the feed
+                                        Text("Not in feed", fontSize = 13.sp, color = Muted)
                                 }
                             }
                         }
