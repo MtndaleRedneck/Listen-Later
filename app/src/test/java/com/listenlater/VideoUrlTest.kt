@@ -86,4 +86,21 @@ class VideoUrlTest {
             VideoUrl.cleanSharedUrl("wow: https://youtu.be/dQw4w9WgXcQ.")
         )
     }
+
+    @Test
+    fun titleWordLookalikeDoesNotBeatUrl() {
+        // "Performance" is 11 ID-legal chars; the URL must still win.
+        assertEquals(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            VideoUrl.cleanSharedUrl("Performance review https://youtu.be/dQw4w9WgXcQ")
+        )
+    }
+
+    @Test
+    fun bareIdFallbackWhenNoUrl() {
+        assertEquals(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            VideoUrl.cleanSharedUrl("loved this dQw4w9WgXcQ wow")
+        )
+    }
 }

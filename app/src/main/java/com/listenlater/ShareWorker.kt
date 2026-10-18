@@ -1,8 +1,10 @@
 package com.listenlater
 
 import android.content.Context
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -47,8 +49,17 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             Result.success()
         } catch (e: Exception) {
             val failures = store.attempts + 1
-            store.attempts = failures
-            enqueue(applicationContext, Backoff.nextDelayMs(failures))
+            if (Backoff.shouldGiveUp(failures)) {
+                // A permanently failing share must not block the queue behind
+                // it: drop the head item, say so, and move on.
+                store.removeFromQueue(url)
+                store.attempts = 0
+                Notifier.toast(applicationContext, "Couldn't send that video - skipped it")
+                if (store.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
+            } else {
+                store.attempts = failures
+                enqueue(applicationContext, Backoff.nextDelayMs(failures))
+            }
             Result.success()
         }
     }
@@ -56,6 +67,11 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
     companion object {
         fun enqueue(context: Context, delayMs: Long) {
             val req = OneTimeWorkRequestBuilder<ShareWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
                 .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
                 .build()
             WorkManager.getInstance(context)
