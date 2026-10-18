@@ -48,6 +48,11 @@ class CredStore(context: Context) {
         get() = prefs.getBoolean("loginNotified", false)
         set(v) = prefs.edit().putBoolean("loginNotified", v).apply()
 
+    /** A version the user chose to skip; not offered again. */
+    var skippedUpdate: String?
+        get() = prefs.getString("skipped_update", null)
+        set(v) = prefs.edit().putString("skipped_update", v).apply()
+
     var attempts: Int
         get() = prefs.getInt("attempts", 0)
         set(v) = prefs.edit().putInt("attempts", v).apply()
