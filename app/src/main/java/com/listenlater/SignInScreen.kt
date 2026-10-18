@@ -144,7 +144,7 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                 Text("Sign in", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextC)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Sign-in lasts about a month. When it runs out you'll land back here with a new picture.",
+                    "When your sign-in expires, you'll land back here with a new picture.",
                     fontSize = 13.sp, color = Muted
                 )
                 Spacer(Modifier.height(18.dp))

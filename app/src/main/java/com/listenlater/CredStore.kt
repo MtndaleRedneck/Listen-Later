@@ -48,10 +48,6 @@ class CredStore(context: Context) {
         get() = prefs.getBoolean("loginNotified", false)
         set(v) = prefs.edit().putBoolean("loginNotified", v).apply()
 
-    var expiryNotified: Boolean
-        get() = prefs.getBoolean("expiryNotified", false)
-        set(v) = prefs.edit().putBoolean("expiryNotified", v).apply()
-
     var attempts: Int
         get() = prefs.getInt("attempts", 0)
         set(v) = prefs.edit().putInt("attempts", v).apply()
@@ -64,7 +60,6 @@ class CredStore(context: Context) {
             .putLong("loginAt", System.currentTimeMillis())
             .putBoolean("needsLogin", false)
             .putBoolean("loginNotified", false)
-            .putBoolean("expiryNotified", false)
             .putInt("attempts", 0)
             .apply()
     }

@@ -15,7 +15,6 @@ object Notifier {
 
     private const val CHANNEL = "listenlater_alerts"
     private const val ID_SIGNIN = 1
-    private const val ID_EXPIRY = 2
 
     fun ensureChannel(context: Context) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -49,10 +48,6 @@ object Notifier {
         if (store.loginNotified) return
         store.loginNotified = true
         post(context, ID_SIGNIN, "Sign in again to keep sending videos.")
-    }
-
-    fun notifyExpiry(context: Context, store: CredStore) {
-        post(context, ID_EXPIRY, "Your sign-in runs out soon. Open the app to renew it.")
     }
 
     fun toast(context: Context, message: String) {

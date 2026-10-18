@@ -7,8 +7,8 @@ app picks it up like any episode.
 
 ## How it works
 
-1. Sign in once with your server address and login. The session lasts about
-   a month; the app reminds you before it runs out.
+1. Sign in once with your server address and login. When the session
+   expires, the app asks you to sign in again.
 2. Share a video to Listen Later from any app. One tap, nothing opens, a
    toast confirms it was sent.
 3. The video appears in your Individual Videos podcast feed. Subscribe to
