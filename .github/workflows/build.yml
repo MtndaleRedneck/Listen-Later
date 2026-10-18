@@ -21,7 +21,7 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v3
 
-      - name: Guard: update pop-up never scrolls sideways
+      - name: "Guard: update pop-up never scrolls sideways"
         run: |
           if grep -rn "horizontalScroll" app/src/main/java/com/listenlater/StatusScreen.kt; then
             echo "StatusScreen must not scroll horizontally - long text wraps, notes scroll vertically."
