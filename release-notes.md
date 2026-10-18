@@ -1,3 +1,6 @@
-First release.
+Fixes sharing, which could fail to reach the server.
 
-Share a video to Listen Later and it lands in your podcast app, downloaded by your own server. Sign in once, share with one tap, and get on with your day. Duplicates are called out, failures retry quietly, and your feed settings stay exactly where you left them - on your server.
+- Shares now use the same server call the website uses, so videos land in your feed reliably.
+- Tidy status card: your server name sits next to Connected.
+
+Your feed settings stay exactly where you left them - on your server.

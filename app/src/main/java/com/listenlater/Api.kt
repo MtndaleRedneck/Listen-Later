@@ -99,14 +99,19 @@ class Api(private val server: String, private val token: String?) {
         }
     }
 
+    /**
+     * Same call the website makes when you paste a link: the server resolves
+     * the video and returns its own feed object, which we post back unchanged.
+     */
     fun previewFeed(videoUrl: String): JSONObject {
-        val data = call(post("/api/feed/playlist/preview", JSONObject().put("originalUrl", videoUrl)))
+        val data = call(post("/api/feed/fetch", JSONObject().put("source", videoUrl)))
             .optJSONObject("data") ?: throw ApiError("No preview returned")
         return data.optJSONObject("feed") ?: throw ApiError("No feed in preview")
     }
 
     fun addFeed(feed: JSONObject): ShareResult {
-        val data = call(post("/api/feed/playlist/add", feed)).optJSONObject("data")
+        val type = FeedTypes.pathFor(feed.optString("type", ""))
+        val data = call(post("/api/feed/$type/add", feed)).optJSONObject("data")
         val message = data?.optString("message", "") ?: ""
         return ShareResult(message.contains("already in", ignoreCase = true))
     }

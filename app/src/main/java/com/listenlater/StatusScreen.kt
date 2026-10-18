@@ -99,20 +99,22 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
         Spacer(Modifier.height(2.dp))
         Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        color = Sage,
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier.width(9.dp).height(9.dp)
-                    ) {}
-                    Spacer(Modifier.width(8.dp))
-                    Text("Connected", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = Sage,
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.width(9.dp).height(9.dp)
+                        ) {}
+                        Spacer(Modifier.width(8.dp))
+                        Text("Connected", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC)
+                    }
+                    Text(host(), fontSize = 13.sp, color = Muted)
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "${host()}  ·  signed in as ${store.username ?: "you"}",
-                    fontSize = 13.sp, color = Muted
-                )
             }
         }
 
