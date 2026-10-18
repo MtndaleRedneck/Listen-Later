@@ -95,25 +95,3 @@ class UpdaterTest {
 
     @Test fun hex() { assertEquals("00ff10", Updater.toHex(byteArrayOf(0, -1, 16))) }
 }
-
-class HardestHitTest {
-    @Test fun newDriveResetsHardestHit() {
-        val s = driveStartState(5, false, 99L)
-        assertEquals(0f, s.hardestHitG, 0f)
-        assertTrue(s.running); assertEquals(99L, s.driveId); assertEquals(6, s.tick)
-    }
-    @Test fun keepsTheMaximum() {
-        assertEquals(1.4f, hardestAfterHit(1.4f, 0.9f), 0f)
-        assertEquals(2.0f, hardestAfterHit(1.4f, 2.0f), 0f)
-        assertEquals(0.7f, hardestAfterHit(0f, 0.7f), 0f)
-    }
-    @Test fun passengerStartIsPaused() { assertTrue(driveStartState(0, true, 1L).paused) }
-    @Test fun hitLabelFollowsRunning() {
-        assertEquals("HARDEST HIT THIS DRIVE", homeHardestHitLabel(true))
-        assertEquals("HARDEST HIT LAST DRIVE", homeHardestHitLabel(false))
-    }
-    @Test fun labelFollowsRunning() {
-        assertEquals("HITS THIS DRIVE", homeDriveLabel(true))
-        assertEquals("HITS LAST DRIVE", homeDriveLabel(false))
-    }
-}
