@@ -27,7 +27,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,12 +78,11 @@ private fun Modifier.autofillHints(
     val autofill = LocalAutofill.current
     val tree = LocalAutofillTree.current
     val node = remember { AutofillNode(autofillTypes = types, onFill = onFill) }
-    DisposableEffect(node) {
-        tree += node
-        onDispose { tree -= node }
-    }
     this
-        .onGloballyPositioned { node.boundingBox = it.boundsInWindow() }
+        .onGloballyPositioned {
+            node.boundingBox = it.boundsInWindow()
+            tree += node // map keyed by node id; re-adding is a no-op
+        }
         .onFocusChanged { focus ->
             if (focus.isFocused) autofill?.requestAutofillForNode(node)
             else autofill?.cancelAutofillForNode(node)
@@ -131,6 +129,7 @@ private fun Field(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
     val scope = rememberCoroutineScope()
