@@ -179,7 +179,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Pocket Casts feed link", fontSize = 15.sp, color = TextC)
+                        Text("Feed link", fontSize = 15.sp, color = TextC)
                         Text("Copy", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.clickable { copyFeedLink() })
                     }
