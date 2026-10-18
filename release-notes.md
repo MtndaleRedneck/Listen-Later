@@ -1,6 +1,7 @@
-Fixes sharing, which could fail to reach the server.
+## What's new in 1.1.0
 
-- Shares now use the same server call the website uses, so videos land in your feed reliably.
-- Tidy status card: your server name sits next to Connected.
+- Update check: on a cold open, Listen Later quietly checks GitHub for a newer release. If one is available, a pop-up shows the release notes with options to update, later, or skip this version.
+- Pull-to-refresh on the status screen.
+- Header on the status screen with the app icon and name.
 
-Your feed settings stay exactly where you left them - on your server.
+Android 12+. See the README for setup.
