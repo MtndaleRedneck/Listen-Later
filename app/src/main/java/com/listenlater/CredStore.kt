@@ -74,7 +74,10 @@ class CredStore(context: Context) {
         val e = prefs.edit()
         // A different server or username means a different account: the previous account's
         // feed link (it carries an API key) and any queued shares must not carry over.
-        if (this.server != server || this.username != username) {
+        // Only wipe when a previous account actually exists: before the first sign-in the
+        // store is empty and the queue may hold pre-login shares waiting to be sent.
+        val prevServer = this.server
+        if (prevServer != null && (prevServer != server || this.username != username)) {
             e.remove("feedUrl").remove("queue")
         }
         e.putString("server", server)
