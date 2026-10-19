@@ -77,7 +77,7 @@ class CredStore(context: Context) {
         if (this.server != server || this.username != username) {
             e.remove("feedUrl").remove("queue")
         }
-            .putString("server", server)
+        e.putString("server", server)
             .putString("username", username)
             .putString("token", token)
             .putLong("loginAt", System.currentTimeMillis())
