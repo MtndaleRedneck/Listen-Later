@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.dp
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GrowingSpinnerIndicator(state: PullToRefreshState, modifier: Modifier = Modifier) {
-    if (state.progress <= 0f && !state.isRefreshing) return // nothing shown, no animation running
+fun GrowingSpinnerIndicator(state: PullToRefreshState, isRefreshing: Boolean, modifier: Modifier = Modifier) {
+    if (!isRefreshing && state.distanceFraction <= 0f) return // nothing shown, no animation running
     val spin by rememberInfiniteTransition(label = "ptrSpin").animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -40,7 +40,7 @@ fun GrowingSpinnerIndicator(state: PullToRefreshState, modifier: Modifier = Modi
     )
     Box(modifier.padding(top = 18.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(28.dp)) {
-            val frac = if (state.isRefreshing) 1f else state.progress.coerceIn(0f, 1f)
+            val frac = if (isRefreshing) 1f else state.distanceFraction.coerceIn(0f, 1f)
             val radius = size.minDimension / 2 * (0.35f + 0.65f * frac)
             val cx = size.width / 2
             val cy = size.height / 2
@@ -53,8 +53,8 @@ fun GrowingSpinnerIndicator(state: PullToRefreshState, modifier: Modifier = Modi
             )
             drawArc(
                 color = Sage.copy(alpha = frac),
-                startAngle = if (state.isRefreshing) spin else -90f + 300f * frac,
-                sweepAngle = if (state.isRefreshing) 280f else 90f + 200f * frac,
+                startAngle = if (isRefreshing) spin else -90f + 300f * frac,
+                sweepAngle = if (isRefreshing) 280f else 90f + 200f * frac,
                 useCenter = false,
                 topLeft = Offset(cx - radius, cy - radius),
                 size = Size(radius * 2, radius * 2),

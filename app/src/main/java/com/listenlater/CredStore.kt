@@ -6,9 +6,9 @@ import androidx.security.crypto.MasterKey
 import org.json.JSONArray
 
 /**
- * Session state in Keystore-backed encrypted preferences. Holds the login token,
- * never the password. The cached feed link contains an API key, so it lives here
- * too and is never logged or shown.
+ * Session state in Keystore-backed encrypted preferences. Holds the login token
+ * and, while Remember me is on, the saved password. The cached feed link contains
+ * an API key, so it lives here too and is never logged or shown.
  */
 class CredStore(context: Context) {
 
@@ -72,6 +72,11 @@ class CredStore(context: Context) {
 
     fun markLoggedIn(server: String, username: String, token: String, password: String, remember: Boolean) {
         val e = prefs.edit()
+        // A different server or username means a different account: the previous account's
+        // feed link (it carries an API key) and any queued shares must not carry over.
+        if (this.server != server || this.username != username) {
+            e.remove("feedUrl").remove("queue")
+        }
             .putString("server", server)
             .putString("username", username)
             .putString("token", token)
@@ -107,5 +112,19 @@ class CredStore(context: Context) {
         if (q.remove(url)) saveQueue(q)
     }
 
-    fun clear() = prefs.edit().clear().apply()
+    /**
+     * Sign out ends the session only. Server, username, and the saved password
+     * survive while Remember me is on; unchecking Remember me is what wipes the
+     * password. Pending shares, the feed link, and the skipped-update choice are
+     * account state and stay too.
+     */
+    fun signOut() {
+        prefs.edit()
+            .remove("token")
+            .remove("needsLogin")
+            .remove("loginNotified")
+            .remove("loginAt")
+            .remove("attempts")
+            .apply()
+    }
 }

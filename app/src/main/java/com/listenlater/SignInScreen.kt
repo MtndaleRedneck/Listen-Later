@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -31,7 +32,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,17 +41,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.autofill.AutofillNode
-import androidx.compose.ui.autofill.AutofillType
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalAutofill
-import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -72,35 +66,6 @@ private fun normalizeServer(input: String): String {
     return s
 }
 
-// Android autofill (password managers) hooks for BasicTextField. Registers a node with the
-// autofill tree while the field exists and asks the service to fill it when it gains focus.
-@OptIn(ExperimentalComposeUiApi::class)
-private fun Modifier.autofillHints(
-    types: List<AutofillType>,
-    onFill: (String) -> Unit
-): Modifier = composed {
-    if (types.isEmpty()) return@composed this
-    val autofill = LocalAutofill.current
-    val tree = LocalAutofillTree.current
-    val node = remember { AutofillNode(autofillTypes = types, onFill = onFill) }
-    DisposableEffect(node) {
-        onDispose {
-            // Compose 1.6's AutofillTree exposes no removal (minusAssign came later),
-            // so dispose logically: no bounds means the node is never offered a fill.
-            node.boundingBox = null
-        }
-    }
-    this
-        .onGloballyPositioned {
-            node.boundingBox = it.boundsInWindow()
-            tree += node // map keyed by node id; re-adding is a no-op
-        }
-        .onFocusChanged { focus ->
-            if (focus.isFocused) autofill?.requestAutofillForNode(node)
-            else autofill?.cancelAutofillForNode(node)
-        }
-}
-
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun Field(
@@ -110,7 +75,7 @@ private fun Field(
     hint: String,
     secret: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
-    autofillTypes: List<AutofillType> = emptyList(),
+    autofillContentType: ContentType? = null,
     trailing: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -128,7 +93,7 @@ private fun Field(
                     visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
                     modifier = Modifier
                         .weight(1f)
-                        .autofillHints(autofillTypes, onChange)
+                        .semantics { if (autofillContentType != null) contentType = autofillContentType }
                         .padding(14.dp),
                     decorationBox = { inner ->
                         if (value.isEmpty()) Text(hint, color = Muted, fontSize = 15.sp)
@@ -242,12 +207,12 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                         keyboardType = KeyboardType.Uri)
                     Spacer(Modifier.height(12.dp))
                     Field("USERNAME", username, { username = it }, "username",
-                        autofillTypes = listOf(AutofillType.Username))
+                        autofillContentType = ContentType.Username)
                     Spacer(Modifier.height(12.dp))
                     Field("PASSWORD", password, { password = it }, "password",
                         secret = !showPassword,
                         keyboardType = KeyboardType.Password,
-                        autofillTypes = listOf(AutofillType.Password),
+                        autofillContentType = ContentType.Password,
                         trailing = {
                             IconButton(
                                 onClick = { showPassword = !showPassword },

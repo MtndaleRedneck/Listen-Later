@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
                         StatusScreen(
                             store = store,
                             onSignedOut = {
-                                store.clear()
+                                store.signOut()
                                 screen = "signin"
                             },
                             onSessionExpired = {

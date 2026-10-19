@@ -12,7 +12,6 @@ import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,6 +36,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,10 +46,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -100,16 +103,17 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     var loading by remember { mutableStateOf(true) }
     var episodes by remember { mutableStateOf<List<EpisodeItem>>(emptyList()) }
     var feedUrl by remember { mutableStateOf(store.feedUrl) }
+    var copied by remember { mutableStateOf(false) }
     var updateUi by remember { mutableStateOf<UpdateUi?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
 
     fun host(): String = (store.server ?: "").removePrefix("https://").removePrefix("http://")
 
-    fun copyFeedLink() {
-        val url = feedUrl ?: return
+    fun copyFeedLink(): Boolean {
+        val url = feedUrl ?: return false
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("feed", url))
-        Notifier.toast(context, "Feed link copied")
+        return true
     }
 
     fun load(onDone: (() -> Unit)? = null) {
@@ -227,13 +231,18 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     }
 
     val ptrState = rememberPullToRefreshState()
-    if (ptrState.isRefreshing) {
-        LaunchedEffect(true) {
-            load { ptrState.endRefresh() }
-        }
-    }
+    var ptrRefreshing by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize().nestedScroll(ptrState.nestedScrollConnection)) {
+    PullToRefreshBox(
+        isRefreshing = ptrRefreshing,
+        onRefresh = {
+            ptrRefreshing = true
+            load { ptrRefreshing = false }
+        },
+        state = ptrState,
+        modifier = Modifier.fillMaxSize(),
+        indicator = { GrowingSpinnerIndicator(ptrState, ptrRefreshing, Modifier.align(Alignment.TopCenter)) }
+    ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp)
         ) {
@@ -323,21 +332,34 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
 
                 Spacer(Modifier.height(14.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
-                    Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                    Column(Modifier.padding(horizontal = 18.dp, vertical = 13.dp)) {
+                        Button(
+                            onClick = {
+                                if (copyFeedLink()) {
+                                    copied = true
+                                    scope.launch { delay(1500); copied = false }
+                                }
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Sage,
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Feed link", fontSize = 15.sp, color = TextC)
-                                Spacer(Modifier.width(10.dp))
-                                Text("Paste into your podcast app", fontSize = 13.sp, color = Muted)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    if (copied) "\u2713 Copied" else "Copy feed link",
+                                    fontSize = 15.sp, fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Paste into your podcast app",
+                                    fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f)
+                                )
                             }
-                            Text("Copy", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { copyFeedLink() })
                         }
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 13.dp),
                             horizontalArrangement = Arrangement.Center
                         ) {
                             Text("Sign out", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
@@ -359,7 +381,6 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             }
         }
 
-        GrowingSpinnerIndicator(ptrState, Modifier.align(Alignment.TopCenter))
     }
 
     updateUi?.let { u ->

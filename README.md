@@ -37,8 +37,9 @@ Grab the APK from the latest release and install it. Android 12 or newer.
 Your server address, login token, and feed link are stored only in the
 Android Keystore-backed encrypted preferences on your phone. Your password
 is stored in the same Keystore-encrypted storage only while "Remember me on
-this device" is on at sign-in (it is on by default); unchecking it or signing
-out wipes the saved password. It is never written in plain text and never
+this device" is on (it is on by default); unchecking it wipes the saved
+password. Signing out keeps the remembered login so the next sign-in is
+prefilled. It is never written in plain text and never
 logged.
 
 Two things use the network. Everything about your videos and your feed goes
