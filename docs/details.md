@@ -1,5 +1,7 @@
 # Listen Later - details
 
+Requires Android 12 or newer.
+
 ## Screenshots
 
 <p>

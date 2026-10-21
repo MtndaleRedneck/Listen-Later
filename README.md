@@ -24,8 +24,8 @@ where you set them on your server's website.
 ## Install
 
 Grab the APK from the [latest release](../../releases/latest) and install
-it. Android 12 or newer. You need a self-hosted PigeonPod server you can
-sign in to, and any podcast app that can subscribe to an RSS feed.
+it. You need a self-hosted PigeonPod server you can sign in to, and any
+podcast app that can subscribe to an RSS feed.
 
 Setup, privacy (including what the update check sends), and screenshots are
 in [docs/details.md](docs/details.md).
