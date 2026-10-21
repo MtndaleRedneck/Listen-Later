@@ -360,7 +360,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         }
                     }
                     val topVisible by remember { derivedStateOf { listScroll.value > 300 } }
-                    AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = topVisible,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                         enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 4 },
