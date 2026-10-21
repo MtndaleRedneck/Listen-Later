@@ -41,7 +41,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -323,7 +323,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.weight(1f)) {
                     Box {
-                    Column(Modifier.verticalScroll(listScroll).padding(horizontal = 18.dp, vertical = 8.dp)) {
+                    Column(Modifier.verticalScroll(listScroll).padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 64.dp)) {
                         episodes.forEach { ep ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -376,7 +376,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = null, tint = TextC, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = TextC, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Top", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextC)
                             }
