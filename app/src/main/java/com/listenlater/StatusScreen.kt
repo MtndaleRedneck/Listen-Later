@@ -9,6 +9,14 @@ import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +41,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -238,6 +248,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
         checkForUpdate()
     }
 
+    val listScroll = rememberScrollState()
+
     if (subScreen == "settings") {
         SettingsScreen(
             onBack = { subScreen = "" },
@@ -310,7 +322,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 Spacer(Modifier.height(14.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.weight(1f)) {
-                    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp)) {
+                    Box {
+                    Column(Modifier.verticalScroll(listScroll).padding(horizontal = 18.dp, vertical = 8.dp)) {
                         episodes.forEach { ep ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -346,6 +359,30 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             }
                         }
                     }
+                    val topVisible by remember { derivedStateOf { listScroll.value > 300 } }
+                    AnimatedVisibility(
+                        visible = topVisible,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+                        enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 4 },
+                        exit = fadeOut(tween(150)),
+                    ) {
+                        Surface(
+                            onClick = { scope.launch { listScroll.animateScrollTo(0, tween(350, easing = FastOutSlowInEasing)) } },
+                            shape = RoundedCornerShape(50),
+                            color = Card2,
+                            border = BorderStroke(1.dp, Color(0xFF46464E)),
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = null, tint = TextC, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Top", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextC)
+                            }
+                        }
+                    }
+                }
                 }
 
                 Spacer(Modifier.height(14.dp))
