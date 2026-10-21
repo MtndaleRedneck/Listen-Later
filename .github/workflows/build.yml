@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths-ignore: ['docs/**']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the GitHub release (only after review sign-off)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -57,7 +62,7 @@ jobs:
       # Releases are published only on manual dispatch, after review sign-off.
       # An existing release is never replaced; bump versionName for a new one.
       - name: Publish release
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
