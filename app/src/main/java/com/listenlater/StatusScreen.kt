@@ -41,7 +41,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -89,6 +91,18 @@ private fun Drawable.toImageBitmap(): androidx.compose.ui.graphics.ImageBitmap {
     draw(canvas)
     return bmp.asImageBitmap()
 }
+
+// Stemmed up-arrow matching the approved Top pill design (material-icons-core has only the chevron).
+private val TopArrowIcon: ImageVector = ImageVector.Builder(
+    name = "TopArrow",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+).addPath(
+    pathData = PathParser().parsePathString("M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z").toNodes(),
+    fill = SolidColor(Color.White),
+).build()
 
 @Composable
 private fun AppHeader(onSettings: () -> Unit) {
@@ -376,7 +390,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = TextC, modifier = Modifier.size(18.dp))
+                                Icon(TopArrowIcon, contentDescription = null, tint = TextC, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Top", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextC)
                             }
