@@ -32,6 +32,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -77,13 +81,16 @@ private fun Drawable.toImageBitmap(): androidx.compose.ui.graphics.ImageBitmap {
 }
 
 @Composable
-private fun AppHeader() {
+private fun AppHeader(onSettings: () -> Unit) {
     val ctx = LocalContext.current
     val icon = remember { ctx.packageManager.getApplicationIcon(ctx.packageName).toImageBitmap() }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 18.dp)) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)))
         Spacer(Modifier.width(12.dp))
-        Text("Listen Later", fontSize = 21.sp, fontWeight = FontWeight.Bold, color = TextC)
+        Text("Listen Later", fontSize = 21.sp, fontWeight = FontWeight.Bold, color = TextC, modifier = Modifier.weight(1f))
+        IconButton(onClick = onSettings) {
+            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Muted)
+        }
     }
 }
 
@@ -106,6 +113,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     var copied by remember { mutableStateOf(false) }
     var updateUi by remember { mutableStateOf<UpdateUi?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
+    var subScreen by remember { mutableStateOf("") } // "", "settings" or "feedback"
 
     fun host(): String = (store.server ?: "").removePrefix("https://").removePrefix("http://")
 
@@ -230,6 +238,16 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
         checkForUpdate()
     }
 
+    if (subScreen == "settings") {
+        SettingsScreen(
+            onBack = { subScreen = "" },
+            onFeedback = { subScreen = "feedback" },
+            onUpdateFound = { info -> updateUi = UpdateUi.Offer(info) },
+        )
+    } else if (subScreen == "feedback") {
+        FeedbackScreen(onBack = { subScreen = "settings" })
+    } else {
+
     val ptrState = rememberPullToRefreshState()
     var ptrRefreshing by remember { mutableStateOf(false) }
 
@@ -247,7 +265,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             modifier = Modifier.fillMaxSize().padding(16.dp)
         ) {
             Spacer(Modifier.height(2.dp))
-            AppHeader()
+            AppHeader(onSettings = { subScreen = "settings" })
             Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
                 Column(Modifier.padding(18.dp)) {
                     Row(
@@ -381,6 +399,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             }
         }
 
+    }
     }
 
     updateUi?.let { u ->

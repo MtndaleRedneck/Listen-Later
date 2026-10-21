@@ -85,15 +85,25 @@ object Updater {
     } catch (e: Exception) { false }
 
     /** Asks GitHub for the latest release. Null on any failure, offline, rate limit or odd response. Call off the main thread. */
-    fun check(current: String): UpdateInfo? = try {
+    fun check(current: String): UpdateInfo? = (checkDetailed(current) as? CheckOutcome.Newer)?.info
+
+    /** The manual "Check for updates" button gets to know which way a null went. */
+    sealed interface CheckOutcome {
+        data class Newer(val info: UpdateInfo) : CheckOutcome
+        object UpToDate : CheckOutcome
+        object Unavailable : CheckOutcome
+    }
+
+    fun checkDetailed(current: String): CheckOutcome = try {
         val c = URL(API).openConnection() as HttpURLConnection
         c.connectTimeout = 6000; c.readTimeout = 8000; c.instanceFollowRedirects = false
         c.setRequestProperty("Accept", "application/vnd.github+json"); c.setRequestProperty("User-Agent", "ListenLater")
-        if (c.responseCode != 200) null else {
+        if (c.responseCode != 200) CheckOutcome.Unavailable else {
             val body = c.inputStream.use { it.readBytes(512 * 1024) }
-            parseRelease(String(body, Charsets.UTF_8), current)
+            val info = parseRelease(String(body, Charsets.UTF_8), current)
+            if (info != null) CheckOutcome.Newer(info) else CheckOutcome.UpToDate
         }
-    } catch (e: Exception) { null }
+    } catch (e: Exception) { CheckOutcome.Unavailable }
 
     private fun java.io.InputStream.readBytes(max: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(8192); var n = read(buf); var t = 0
