@@ -47,6 +47,9 @@ class Api(private val server: String, private val token: String?) {
     private fun call(req: Request): JSONObject {
         client.newCall(req).execute().use { res ->
             if (res.code == 401) throw SessionExpired()
+            // 500 and up is the server down (Caddy answers 502 while PigeonPod restarts),
+            // not a refusal: take the quiet-retry path like a lost connection.
+            if (res.code >= 500) throw java.io.IOException("Server error ${res.code}")
             val body = res.body?.string().orEmpty()
             val json = try {
                 JSONObject(body)
@@ -84,6 +87,7 @@ class Api(private val server: String, private val token: String?) {
             .build()
         client.newCall(req).execute().use { res ->
             if (res.code == 401) throw SessionExpired()
+            if (res.code >= 500) throw java.io.IOException("Server error ${res.code}")
             val body = res.body?.string().orEmpty()
             val json = try {
                 JSONObject(body)
