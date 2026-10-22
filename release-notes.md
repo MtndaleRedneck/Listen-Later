@@ -6,4 +6,3 @@
 - The list refreshes itself while downloads run, and videos waiting to send show at the top as "Sending".
 - Friendlier monthly sign-in: tap the picture for a new one, Enter signs in, plain error words.
 - Sign out asks first, retry is easier to tap, updates clean up after themselves, and screens keep their place.
-- Easier on the eyes: buttons read better in daylight and long titles take at most two lines.
