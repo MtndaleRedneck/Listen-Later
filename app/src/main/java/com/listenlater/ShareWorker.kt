@@ -113,11 +113,14 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             // No signal, timeout, server down: today's backoff.
             val failures = queue.attempts + 1
             if (Backoff.shouldGiveUp(failures)) {
-                // A permanently failing share must not block the queue behind
-                // it: drop the head item, say so, and move on.
+                // A permanently failing share must not block the queue behind it, and it
+                // must not be lost either: park it under "Couldn't get it" with Try again,
+                // like a refusal. (A background toast would never be seen.)
                 queue.removeFromQueue(url)
                 queue.attempts = 0
-                Notifier.toast(applicationContext, "Couldn't send that video - skipped it")
+                val reason = "Couldn't reach your server"
+                queue.addSkipped(url, title, reason)
+                Notifier.skipped(applicationContext, url, title, reason)
                 if (queue.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
             } else {
                 queue.attempts = failures
