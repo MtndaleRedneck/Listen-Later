@@ -177,6 +177,18 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     }
 
     fun load(onDone: (() -> Unit)? = null) {
+        if (Demo.active) {
+            // CI screenshots: canned rows instead of a server.
+            if (Demo.forceLoadFail) {
+                loadFailed = true
+            } else {
+                episodes = Demo.episodes.map { EpisodeItem(it.id, it.title, it.status) }
+                loadFailed = false
+            }
+            loading = false
+            onDone?.invoke()
+            return
+        }
         val server = store.server ?: return
         val token = store.token ?: return
         val api = Api(server, token)

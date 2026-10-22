@@ -27,6 +27,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         store = CredStore(this)
 
+        // CI screenshots: seed canned demo state (debug builds only).
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("demo", false)) {
+            Demo.active = true
+            Demo.forceLoadFail = intent.getBooleanExtra("loadfail", false)
+            if (intent.getBooleanExtra("signedout", false)) Demo.seedSignedOut(this)
+            else Demo.seedSignedIn(this)
+            if (intent.getBooleanExtra("empty", false)) QueueStore(this).clearAll()
+        }
+
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
