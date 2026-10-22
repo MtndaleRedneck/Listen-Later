@@ -12,8 +12,6 @@ val NavBg = Color(0xFF141418)
 val TextC = Color(0xFFF5F5F7)
 val Muted = Color(0xFF9696A0)
 val Sage = Color(0xFF6F9C7E)
-/** Debug builds only: the CI screenshot run renders titles the pre-1.5 way (no line cap) for before/after shots. */
-var TitleOld = false
 val Yellow = Color(0xFFFFBE3C)
 
 @Composable

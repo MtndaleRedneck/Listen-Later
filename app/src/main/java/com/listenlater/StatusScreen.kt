@@ -467,7 +467,6 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(ep.title, fontSize = 15.sp, color = TextC,
-                                    maxLines = if (TitleOld) Int.MAX_VALUE else 2, overflow = if (TitleOld) TextOverflow.Clip else TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f).padding(end = 10.dp))
                                 when {
                                     ep.status == "COMPLETED" ->

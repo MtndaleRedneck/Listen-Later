@@ -34,7 +34,6 @@ class MainActivity : ComponentActivity() {
             if (intent.getBooleanExtra("signedout", false)) Demo.seedSignedOut(this)
             else Demo.seedSignedIn(this)
             if (intent.getBooleanExtra("empty", false)) QueueStore(this).clearAll()
-            if (intent.getBooleanExtra("titleold", false)) TitleOld = true
         }
 
         if (Build.VERSION.SDK_INT >= 33 &&

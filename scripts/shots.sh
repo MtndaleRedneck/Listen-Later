@@ -24,7 +24,6 @@ tap_text() {
 shot warmup --ez demo true
 sleep 5
 rm -f $OUT/warmup.png
-shot v15-status-titleold --ez demo true --ez titleold true
 shot v15-status --ez demo true
 cp $OUT/v15-status.png docs/main.png
 shot v15-loadfailed --ez demo true --ez loadfail true --ez empty true
