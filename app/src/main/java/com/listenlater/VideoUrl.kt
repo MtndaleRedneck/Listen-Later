@@ -34,6 +34,16 @@ object VideoUrl {
         return if (ID.matches(whole)) whole else null
     }
 
+    /** True when the share is a YouTube playlist link (and therefore carries no single video). */
+    fun isPlaylistLink(sharedText: String?): Boolean {
+        if (sharedText.isNullOrBlank()) return false
+        return sharedText.trim().split(Regex("\\s+")).any { token ->
+            val url = token.trim('<', '>', '"', '\'', '(', ')', ',', '.', '!', ';').toHttpUrlOrNull() ?: return@any false
+            val host = url.host.lowercase()
+            (host == "youtube.com" || host.endsWith(".youtube.com")) && url.encodedPath.startsWith("/playlist")
+        }
+    }
+
     private fun fromUrlToken(token: String): String? {
         if (token.isEmpty()) return null
         val url = token.toHttpUrlOrNull() ?: return null

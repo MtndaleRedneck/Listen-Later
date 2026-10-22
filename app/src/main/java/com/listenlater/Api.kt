@@ -123,6 +123,11 @@ class Api(private val server: String, private val token: String?) {
         return (0 until records.length()).map { records.getJSONObject(it) }
     }
 
+    /** Re-kicks a cleaned-up (READY) episode. Server accepts READY only. */
+    fun download(id: String) {
+        call(post("/api/episode/download/$id", JSONObject()))
+    }
+
     fun retryEpisode(id: String) {
         call(post("/api/episode/retry/$id", JSONObject()))
     }

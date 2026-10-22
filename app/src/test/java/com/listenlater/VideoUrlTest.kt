@@ -115,3 +115,18 @@ class VideoUrlTest {
         )
     }
 }
+
+class PlaylistLinkTest {
+    @Test
+    fun playlistUrlIsAPlaylist() {
+        org.junit.Assert.assertTrue(com.listenlater.VideoUrl.isPlaylistLink("Check this https://www.youtube.com/playlist?list=PLabc123"))
+        org.junit.Assert.assertTrue(com.listenlater.VideoUrl.isPlaylistLink("https://music.youtube.com/playlist?list=PLabc123"))
+    }
+
+    @Test
+    fun watchUrlIsNotAPlaylist() {
+        org.junit.Assert.assertFalse(com.listenlater.VideoUrl.isPlaylistLink("https://www.youtube.com/watch?v=dQw4w9WgXcQ"))
+        org.junit.Assert.assertFalse(com.listenlater.VideoUrl.isPlaylistLink("https://youtu.be/dQw4w9WgXcQ"))
+        org.junit.Assert.assertFalse(com.listenlater.VideoUrl.isPlaylistLink("no link here"))
+    }
+}

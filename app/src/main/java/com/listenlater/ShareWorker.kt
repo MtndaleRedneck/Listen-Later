@@ -8,19 +8,31 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 
+/** One worker run at a time: REPLACE can overlap a canceled run's blocking network call. */
+object QueueLock {
+    val mutex = Mutex()
+}
+
 /**
- * Sends queued shares one at a time. Failures retry quietly on the Backoff
- * rhythm; a 401 keeps the queue and raises one sign-in notification. Login
- * itself only ever happens on tap in the app, never here.
+ * Sends queued shares one at a time. Network failures retry quietly on the Backoff
+ * rhythm; a server-given reason skips the video at most once-retried, names it in a
+ * notification, and parks it in the "Couldn't get it" list for Try again; a 401 keeps
+ * the queue and raises one sign-in notification. Login itself only ever happens on
+ * tap in the app, never here.
  */
 class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = QueueLock.mutex.withLock { run() }
+
+    private suspend fun run(): Result {
         val store = CredStore(applicationContext)
-        val queue = store.shareQueue()
-        if (queue.isEmpty()) return Result.success()
+        val queue = QueueStore(applicationContext)
+        val q = queue.shareQueue()
+        if (q.isEmpty()) return Result.success()
 
         val token = store.token
         val server = store.server
@@ -31,33 +43,84 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         }
 
         val api = Api(server, token)
-        val url = queue.first()
+        val url = q.first()
+        var title = ""
         return try {
             val feed = api.previewFeed(url)
+            title = feed.optString("title", "")
             val result = api.addFeed(feed)
-            store.removeFromQueue(url)
-            store.attempts = 0
-            Notifier.toast(
-                applicationContext,
-                if (result.duplicate) "Already in your feed" else "Sent to Listen Later"
-            )
-            if (store.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
+            if (result.duplicate) {
+                // The server kept the record after cleanup or a failed download, so it
+                // skipped the download. Look the episode up by its video ID and kick it.
+                // UNVERIFIED: the download/retry calls accept READY/FAILED only, per the
+                // teardown's read of the server; any surprise falls back to the old toast.
+                var handled = false
+                val id = VideoUrl.extractVideoId(url)
+                if (id != null) {
+                    try {
+                        val status = api.episodes(FEED_ID)
+                            .firstOrNull { it.optString("id") == id }
+                            ?.optString("downloadStatus")
+                        when (status) {
+                            "READY" -> {
+                                api.download(id)
+                                Notifier.toast(applicationContext, "Getting it again")
+                                handled = true
+                            }
+                            "FAILED" -> {
+                                api.retryEpisode(id)
+                                Notifier.toast(applicationContext, "Trying that one again")
+                                handled = true
+                            }
+                            else -> {}
+                        }
+                    } catch (e: Exception) {
+                        // The lookup or kick failed; fall back to the plain duplicate word.
+                    }
+                }
+                if (!handled) Notifier.toast(applicationContext, "Already in your feed")
+            } else {
+                Notifier.toast(applicationContext, "Sent to Listen Later")
+            }
+            queue.removeFromQueue(url)
+            queue.removeSkipped(url)
+            Notifier.cancelSkipped(applicationContext, url)
+            queue.attempts = 0
+            if (queue.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
             Result.success()
         } catch (e: Api.SessionExpired) {
             store.needsLogin = true
             Notifier.notifySignInOnce(applicationContext, store)
             Result.success()
+        } catch (e: Api.ApiError) {
+            // The server answered with a reason (private, deleted, members-only...):
+            // retrying for hours will not help. One quick retry in case YouTube was
+            // briefly limited, then skip it, name it, and park it for Try again.
+            val failures = queue.attempts + 1
+            if (failures < 2) {
+                queue.attempts = failures
+                enqueue(applicationContext, 60_000L)
+            } else {
+                queue.removeFromQueue(url)
+                queue.attempts = 0
+                val reason = e.message ?: "The server said it can't get this video."
+                queue.addSkipped(url, title, reason)
+                Notifier.skipped(applicationContext, url, title, reason)
+                if (queue.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
+            }
+            Result.success()
         } catch (e: Exception) {
-            val failures = store.attempts + 1
+            // No signal, timeout, server down: today's backoff.
+            val failures = queue.attempts + 1
             if (Backoff.shouldGiveUp(failures)) {
                 // A permanently failing share must not block the queue behind
                 // it: drop the head item, say so, and move on.
-                store.removeFromQueue(url)
-                store.attempts = 0
+                queue.removeFromQueue(url)
+                queue.attempts = 0
                 Notifier.toast(applicationContext, "Couldn't send that video - skipped it")
-                if (store.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
+                if (queue.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
             } else {
-                store.attempts = failures
+                queue.attempts = failures
                 enqueue(applicationContext, Backoff.nextDelayMs(failures))
             }
             Result.success()
