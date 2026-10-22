@@ -62,7 +62,7 @@ jobs:
       # Releases are published only on manual dispatch, after review sign-off.
       # An existing release is never replaced; bump versionName for a new one.
       - name: Publish release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -71,6 +71,7 @@ jobs:
             echo "Release $TAG already exists. Bump versionName to publish a new release."
             exit 0
           fi
+          grep -q "^## What's new in $VERSION\$" release-notes.md || { echo "release-notes.md is not for $VERSION"; exit 1; }
           if [ -f release-notes.md ]; then
             gh release create "$TAG" "ListenLater-v$VERSION.apk" \
               --target "$(git rev-parse HEAD)" \
@@ -80,5 +81,5 @@ jobs:
             gh release create "$TAG" "ListenLater-v$VERSION.apk" \
               --target "$(git rev-parse HEAD)" \
               --title "Listen Later $TAG" \
-              --notes "Listen Later $TAG. Android 12+. See the README for setup."
+              --notes "Listen Later $TAG."
           fi
