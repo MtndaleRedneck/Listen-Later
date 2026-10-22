@@ -5,6 +5,9 @@ APK=app/build/outputs/apk/debug/app-debug.apk
 OUT=docs/screenshots
 mkdir -p $OUT
 adb shell settings put global hide_error_dialogs 1
+# Match the primary tester's phone (1440x3088 @ ~649dpi, Galaxy S22 Ultra class)
+adb shell wm size 1440x3088
+adb shell wm density 649
 adb install -r $APK
 adb shell pm grant com.listenlater android.permission.POST_NOTIFICATIONS
 shot() {
@@ -52,3 +55,5 @@ adb exec-out screencap -p > $OUT/v15-settings.png
 tap_text "General feedback, bugs, and feature suggestions"; sleep 2
 adb exec-out screencap -p > $OUT/v15-feedback.png
 ls -la $OUT
+adb shell wm size reset
+adb shell wm density reset
