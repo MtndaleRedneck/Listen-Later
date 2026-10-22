@@ -14,6 +14,10 @@ val Muted = Color(0xFF9696A0)
 val Sage = Color(0xFF6F9C7E)
 /** Deeper green for filled buttons only: white on Sage reads 3.1:1, on this 4.7:1. Sage stays for dots and green text. */
 val SageFill = Color(0xFF4F7D5E)
+
+/** Debug builds only: the CI screenshot run can render the pre-1.5 button green for before/after shots. */
+var SageFillOld = false
+val FillGreen: Color get() = if (SageFillOld) Sage else SageFill
 val Yellow = Color(0xFFFFBE3C)
 
 @Composable
