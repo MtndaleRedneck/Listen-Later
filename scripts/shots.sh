@@ -7,7 +7,17 @@ mkdir -p $OUT
 adb shell settings put global hide_error_dialogs 1
 adb install -r $APK
 adb shell pm grant com.listenlater android.permission.POST_NOTIFICATIONS
-shot() { adb shell am force-stop com.listenlater; sleep 1; adb shell am start -n com.listenlater/.MainActivity "${@:2}"; sleep 5; adb exec-out screencap -p > $OUT/$1.png; }
+shot() {
+  adb shell am force-stop com.listenlater; sleep 1
+  adb shell am start -n com.listenlater/.MainActivity "${@:2}"
+  for i in $(seq 1 15); do
+    sleep 2
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    if adb shell cat /sdcard/ui.xml 2>/dev/null | grep -q "Listen Later"; then break; fi
+  done
+  sleep 2
+  adb exec-out screencap -p > $OUT/$1.png
+}
 # tap_text <visible text or content-desc>: find its bounds in the UI dump and tap its center.
 tap_text() {
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
