@@ -545,7 +545,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Sage,
+                                containerColor = SageFill,
                                 contentColor = Color.White
                             ),
                             modifier = Modifier.fillMaxWidth()
@@ -557,7 +557,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 )
                                 Text(
                                     "Paste into your podcast app",
-                                    fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f)
+                                    fontSize = 12.sp, color = Color.White
                                 )
                             }
                         }
