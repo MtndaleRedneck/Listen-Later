@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.autofill.ContentType
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -41,6 +42,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +52,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -77,7 +81,10 @@ private fun Field(
     keyboardType: KeyboardType = KeyboardType.Text,
     autofillContentType: ContentType? = null,
     trailing: (@Composable () -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    imeAction: ImeAction = ImeAction.Default,
+    focusRequester: FocusRequester? = null
 ) {
     Column(modifier = modifier) {
         Text(label, fontSize = 11.sp, color = Muted, letterSpacing = 1.sp)
@@ -89,10 +96,12 @@ private fun Field(
                     onValueChange = onChange,
                     singleLine = true,
                     textStyle = TextStyle(color = TextC, fontSize = 15.sp),
-                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+                    keyboardActions = keyboardActions,
                     visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
                     modifier = Modifier
                         .weight(1f)
+                        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                         .semantics { if (autofillContentType != null) contentType = autofillContentType }
                         .padding(14.dp),
                     decorationBox = { inner ->
@@ -172,6 +181,53 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
         }
     }
 
+    fun submit() {
+        val normalized = normalizeServer(server)
+        when {
+            normalized == "http://" -> error = "HTTPS only - use an https:// address."
+            normalized.length <= 8 -> error = "Enter your server address."
+            username.isBlank() -> error = "Enter your username."
+            password.isEmpty() -> error = "Enter your password."
+            captchaOn && captchaCode.isBlank() -> error = "Type the letters in the picture."
+            else -> {
+                loading = true
+                error = null
+                scope.launch {
+                    try {
+                        val api = Api(normalized, null)
+                        val token = withContext(Dispatchers.IO) {
+                            api.login(username.trim(), password, captchaId, captchaCode.trim())
+                        }
+                        store.markLoggedIn(normalized, username.trim(), token, password, rememberMe)
+                        // The "sign in again" notification is answered, however he got here.
+                        Notifier.clearSignIn(context)
+                        // Offer Android's own "save password" prompt.
+                        context.getSystemService(AutofillManager::class.java)?.commit()
+                        showPassword = false
+                        loading = false
+                        onLoggedIn()
+                    } catch (e: Exception) {
+                        loading = false
+                        error = when (e) {
+                            is java.io.IOException -> "Can't reach your server. Check the address and your signal."
+                            is Api.ApiError -> e.message ?: "Sign-in failed."
+                            else -> "Sign-in failed."
+                        }
+                        refreshCaptcha(normalized)
+                    }
+                }
+            }
+        }
+    }
+
+    val captchaFocus = remember { FocusRequester() }
+    // Cursor lands in the letters box once the picture is in and the rest is filled.
+    LaunchedEffect(captchaImage) {
+        if (captchaImage != null && password.isNotEmpty() && username.isNotBlank()) {
+            try { captchaFocus.requestFocus() } catch (e: Exception) { /* field not ready yet */ }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -202,6 +258,15 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                         "Sign in to your PigeonPod server. You'll need to do this again once in a while.",
                         fontSize = 13.sp, color = Muted
                     )
+                    val waiting = remember { QueueStore(context).shareQueue().size }
+                    if (waiting > 0) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (waiting == 1) "1 video is waiting. It'll send after you sign in."
+                            else "$waiting videos are waiting. They'll send after you sign in.",
+                            fontSize = 13.sp, color = Muted
+                        )
+                    }
                     Spacer(Modifier.height(18.dp))
                     Field("SERVER", server, { server = it }, "https://your-server.example",
                         keyboardType = KeyboardType.Uri)
@@ -252,6 +317,8 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                                 color = Card2,
                                 shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier.width(150.dp).height(56.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { refreshCaptcha(normalizeServer(server)) }
                             ) {
                                 Image(
                                     bitmap = captchaImage!!.asImageBitmap(),
@@ -262,6 +329,9 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                             Spacer(Modifier.width(10.dp))
                             Field(
                                 "TYPE THE LETTERS", captchaCode, { captchaCode = it }, "",
+                                keyboardActions = KeyboardActions(onGo = { submit() }),
+                                imeAction = ImeAction.Go,
+                                focusRequester = captchaFocus,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -272,38 +342,7 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                     }
                     Spacer(Modifier.height(16.dp))
                     Button(
-                        onClick = {
-                            val normalized = normalizeServer(server)
-                            when {
-                                normalized == "http://" -> error = "HTTPS only - use an https:// address."
-                                normalized.length <= 8 -> error = "Enter your server address."
-                                username.isBlank() -> error = "Enter your username."
-                                password.isEmpty() -> error = "Enter your password."
-                                captchaOn && captchaCode.isBlank() -> error = "Type the letters in the picture."
-                                else -> {
-                                    loading = true
-                                    error = null
-                                    scope.launch {
-                                        try {
-                                            val api = Api(normalized, null)
-                                            val token = withContext(Dispatchers.IO) {
-                                                api.login(username.trim(), password, captchaId, captchaCode.trim())
-                                            }
-                                            store.markLoggedIn(normalized, username.trim(), token, password, rememberMe)
-                                            // Offer Android's own "save password" prompt.
-                                            context.getSystemService(AutofillManager::class.java)?.commit()
-                                            showPassword = false
-                                            loading = false
-                                            onLoggedIn()
-                                        } catch (e: Exception) {
-                                            loading = false
-                                            error = e.message ?: "Login failed."
-                                            refreshCaptcha(normalized)
-                                        }
-                                    }
-                                }
-                            }
-                        },
+                        onClick = { submit() },
                         enabled = !loading,
                         colors = ButtonDefaults.buttonColors(containerColor = Sage, contentColor = androidx.compose.ui.graphics.Color.White),
                         shape = RoundedCornerShape(14.dp),

@@ -47,7 +47,7 @@ fun SettingsScreen(onBack: () -> Unit, onFeedback: () -> Unit, onUpdateFound: (U
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "General feedback, bugs, and\nfeature suggestions",
+                    "General feedback, bugs, and feature suggestions",
                     color = TextC, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                     lineHeight = 20.sp, modifier = Modifier.weight(1f),
                 )

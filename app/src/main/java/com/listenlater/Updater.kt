@@ -120,7 +120,7 @@ object Updater {
     fun download(ctx: Context, info: UpdateInfo, progress: (Float) -> Unit, cancelled: () -> Boolean): File {
         clean(ctx)
         val dir = updateDir(ctx); dir.mkdirs()
-        val out = File(dir, "ListenLater-update.apk")
+        val out = File(dir, "ListenLater-${info.versionName}.apk")
         try {
             var url = info.apkUrl
             var conn: HttpURLConnection? = null
@@ -131,7 +131,7 @@ object Updater {
                 c.setRequestProperty("User-Agent", "ListenLater")
                 val code = c.responseCode
                 if (code in 301..308) { url = c.getHeaderField("Location") ?: throw Failure("The download could not start."); c.disconnect(); continue }
-                if (code != 200) throw Failure("The download failed (error $code).")
+                if (code != 200) throw Failure("The download didn't start. Try again later.")
                 conn = c; break
             }
             val c = conn ?: throw Failure("The download was redirected too many times.")

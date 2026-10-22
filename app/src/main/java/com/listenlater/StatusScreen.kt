@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
@@ -54,12 +55,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -67,11 +70,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -83,6 +89,11 @@ import org.json.JSONObject
 import java.io.File
 
 const val FEED_ID = "individual-videos-youtube"
+
+/** Per app-open memory: the automatic update offer shows once, not after every rebuild. */
+object Session {
+    var updateOffered = false
+}
 
 private fun Drawable.toImageBitmap(): androidx.compose.ui.graphics.ImageBitmap {
     val bmp = Bitmap.createBitmap(intrinsicWidth.coerceAtLeast(1), intrinsicHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
@@ -131,13 +142,30 @@ private sealed interface UpdateUi {
 fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val queueStore = remember { QueueStore(context) }
     var loading by remember { mutableStateOf(true) }
+    var loadFailed by remember { mutableStateOf(false) }
     var episodes by remember { mutableStateOf<List<EpisodeItem>>(emptyList()) }
     var feedUrl by remember { mutableStateOf(store.feedUrl) }
     var copied by remember { mutableStateOf(false) }
     var updateUi by remember { mutableStateOf<UpdateUi?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
-    var subScreen by remember { mutableStateOf("") } // "", "settings" or "feedback"
+    var subScreen by rememberSaveable { mutableStateOf("") } // "", "settings" or "feedback"
+    var retryingId by remember { mutableStateOf<String?>(null) }
+    var pendingApk by remember { mutableStateOf<File?>(null) }
+    var signOutAsk by remember { mutableStateOf(false) }
+    var queued by remember { mutableStateOf(queueStore.shareQueue()) }
+    var skipped by remember { mutableStateOf(queueStore.skipped()) }
+
+    // Queued and skipped rows follow the store: the worker updates it from the background.
+    DisposableEffect(Unit) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            queued = queueStore.shareQueue()
+            skipped = queueStore.skipped()
+        }
+        queueStore.addListener(listener)
+        onDispose { queueStore.removeListener(listener) }
+    }
 
     fun host(): String = (store.server ?: "").removePrefix("https://").removePrefix("http://")
 
@@ -171,11 +199,14 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         // Keep any previously cached link.
                     }
                 }
+                loadFailed = false
                 loading = false
                 onDone?.invoke()
             } catch (e: Api.SessionExpired) {
                 onSessionExpired()
             } catch (e: Exception) {
+                // Server down or no signal: say so, and keep the last good list on screen.
+                loadFailed = true
                 loading = false
                 onDone?.invoke()
             }
@@ -184,10 +215,12 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
 
     /** Once per open: ask GitHub for a newer release. Silent on any failure. */
     fun checkForUpdate() {
+        if (Session.updateOffered) return
+        Session.updateOffered = true
         val current = BuildConfig.VERSION_NAME
         scope.launch {
             val info = withContext(Dispatchers.IO) { Updater.check(current) } ?: return@launch
-            if (info.versionName == store.skippedUpdate) return@launch
+            if (info.versionName == queueStore.skippedUpdate) return@launch
             updateUi = UpdateUi.Offer(info)
         }
     }
@@ -210,8 +243,9 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
         updateJob = scope.launch {
             try {
                 val f = withContext(Dispatchers.IO) {
-                    // Reuse a file that already survived the "allow installs" round-trip.
-                    val existing = File(Updater.updateDir(context), "ListenLater-update.apk")
+                    // Reuse the file for this exact version if one already survived the
+                    // "allow installs" round-trip; never an older version's leftover.
+                    val existing = File(Updater.updateDir(context), "ListenLater-${info.versionName}.apk")
                     if (existing.exists()) {
                         try {
                             Updater.verify(context, existing)
@@ -237,7 +271,9 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 if (context.packageManager.canRequestPackageInstalls()) {
                     launchInstaller(f)
                 } else {
-                    Notifier.toast(context, "Allow Listen Later to install updates, then tap Update again.")
+                    // Remember the verified file; the resume observer installs it on return.
+                    pendingApk = f
+                    Notifier.toast(context, "Turn on Allow, then come back.")
                     context.startActivity(
                         Intent(
                             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -262,7 +298,31 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
         checkForUpdate()
     }
 
+    // While anything is still downloading, quietly re-read the list every 10 seconds.
+    LaunchedEffect(episodes) {
+        if (episodes.any { it.status == "PENDING" || it.status == "DOWNLOADING" }) {
+            delay(10_000)
+            load()
+        }
+    }
+
+    // Back from Android's "allow installs" screen: install the file we already verified.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && pendingApk != null &&
+                context.packageManager.canRequestPackageInstalls()
+            ) {
+                launchInstaller(pendingApk!!)
+                pendingApk = null
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val listScroll = rememberScrollState()
+    val hasRows = episodes.isNotEmpty() || queued.isNotEmpty() || skipped.isNotEmpty()
 
     if (subScreen == "settings") {
         SettingsScreen(
@@ -301,19 +361,22 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
-                                color = Sage,
+                                color = if (loadFailed) Muted else Sage,
                                 shape = RoundedCornerShape(50),
                                 modifier = Modifier.width(9.dp).height(9.dp)
                             ) {}
                             Spacer(Modifier.width(8.dp))
-                            Text("Connected", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC)
+                            Text(
+                                if (loadFailed) "Can't reach server" else "Connected",
+                                fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC
+                            )
                         }
                         Text(host(), fontSize = 13.sp, color = Muted)
                     }
                 }
             }
 
-            if (!loading && episodes.isEmpty()) {
+            if (!loading && !hasRows) {
                 Spacer(Modifier.height(14.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.weight(1f)) {
@@ -322,53 +385,122 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             .padding(horizontal = 18.dp, vertical = 34.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Nothing here yet", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC)
+                        Text(
+                            if (loadFailed) "Can't reach your server" else "Nothing here yet",
+                            fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC
+                        )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "Share your first video to create the feed. It downloads on your server and lands in your podcast app by itself.",
+                            if (loadFailed) "Pull down to try again."
+                            else "Share your first video to create the feed. It downloads on your server and lands in your podcast app by itself.",
                             fontSize = 13.5.sp, color = Muted
                         )
                     }
                 }
             }
 
-            if (episodes.isNotEmpty()) {
+            if (hasRows) {
                 Spacer(Modifier.height(14.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.weight(1f)) {
                     Box {
                     Column(Modifier.verticalScroll(listScroll).padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 64.dp)) {
+                        queued.forEach { url ->
+                            val id = VideoUrl.extractVideoId(url)
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f).padding(end = 10.dp)) {
+                                    Text("Video waiting to send", fontSize = 15.sp, color = TextC)
+                                    if (id != null) Text(id, fontSize = 12.sp, color = Muted)
+                                }
+                                Text("Sending", fontSize = 13.sp, color = Muted)
+                            }
+                        }
+                        skipped.forEach { sk ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f).padding(end = 10.dp)) {
+                                    Text(
+                                        sk.title.ifEmpty { "Video ${VideoUrl.extractVideoId(sk.url) ?: "link"}" },
+                                        fontSize = 15.sp, color = TextC,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (sk.reason.isNotEmpty()) {
+                                        Text(sk.reason, fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Couldn't get it", fontSize = 13.sp, color = Muted)
+                                    Text("Try again", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable {
+                                            queueStore.removeSkipped(sk.url)
+                                            queueStore.enqueueShare(sk.url)
+                                            queueStore.attempts = 0
+                                            Notifier.cancelSkipped(context, sk.url)
+                                            ShareWorker.enqueue(context, 0L)
+                                        }.padding(horizontal = 12.dp, vertical = 12.dp))
+                                }
+                            }
+                        }
                         episodes.forEach { ep ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(ep.title, fontSize = 15.sp, color = TextC, modifier = Modifier.weight(1f).padding(end = 10.dp))
+                                Text(ep.title, fontSize = 15.sp, color = TextC,
+                                    modifier = Modifier.weight(1f).padding(end = 10.dp))
                                 when {
                                     ep.status == "COMPLETED" ->
                                         Text("In feed", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold)
                                     ep.status == "FAILED" ->
-                                        Text("Retry", fontSize = 13.sp, color = Yellow, fontWeight = FontWeight.SemiBold,
+                                        Text(
+                                            if (retryingId == ep.id) "Retrying..." else "Retry",
+                                            fontSize = 13.sp, color = Yellow, fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.clickable(enabled = retryingId == null) {
+                                                val server = store.server ?: return@clickable
+                                                val token = store.token ?: return@clickable
+                                                val api = Api(server, token)
+                                                retryingId = ep.id
+                                                scope.launch {
+                                                    try {
+                                                        withContext(Dispatchers.IO) { api.retryEpisode(ep.id) }
+                                                        retryingId = null
+                                                        load()
+                                                    } catch (e: Api.SessionExpired) {
+                                                        retryingId = null
+                                                        onSessionExpired()
+                                                    } catch (e: Exception) {
+                                                        retryingId = null
+                                                        Notifier.toast(context, "Couldn't retry. Try again.")
+                                                    }
+                                                }
+                                            }.padding(horizontal = 12.dp, vertical = 12.dp))
+                                    ep.status == "PENDING" || ep.status == "DOWNLOADING" ->
+                                        Text("Downloading", fontSize = 13.sp, color = Muted)
+                                    else -> // READY: cleaned up on the server, not in the feed
+                                        Text("Get again", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.clickable {
                                                 val server = store.server ?: return@clickable
                                                 val token = store.token ?: return@clickable
                                                 val api = Api(server, token)
                                                 scope.launch {
                                                     try {
-                                                        withContext(Dispatchers.IO) { api.retryEpisode(ep.id) }
+                                                        withContext(Dispatchers.IO) { api.download(ep.id) }
                                                         load()
                                                     } catch (e: Api.SessionExpired) {
                                                         onSessionExpired()
                                                     } catch (e: Exception) {
-                                                        // Leave the row as-is; next open re-reads state.
+                                                        Notifier.toast(context, "Couldn't start it. Try again.")
                                                     }
                                                 }
-                                            })
-                                    ep.status == "PENDING" || ep.status == "DOWNLOADING" ->
-                                        Text("Downloading", fontSize = 13.sp, color = Muted)
-                                    else -> // READY: no file on the server, not in the feed
-                                        Text("Not in feed", fontSize = 13.sp, color = Muted)
+                                            }.padding(8.dp))
                                 }
                             }
                         }
@@ -398,7 +530,9 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                     }
                 }
                 }
+            }
 
+            if (episodes.isNotEmpty() || feedUrl != null) {
                 Spacer(Modifier.height(14.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
                     Column(Modifier.padding(horizontal = 18.dp, vertical = 13.dp)) {
@@ -432,7 +566,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             horizontalArrangement = Arrangement.Center
                         ) {
                             Text("Sign out", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { onSignedOut() })
+                                modifier = Modifier.clickable { signOutAsk = true })
                         }
                     }
                 }
@@ -444,13 +578,28 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Text("Sign out", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.clickable { onSignedOut() })
+                            modifier = Modifier.clickable { signOutAsk = true })
                     }
                 }
             }
         }
 
     }
+    }
+
+    if (signOutAsk) {
+        AlertDialog(
+            onDismissRequest = { signOutAsk = false },
+            containerColor = Card2,
+            title = { Text("Sign out?", color = TextC) },
+            text = { Text("Videos you share will wait until you sign in again.", color = Muted) },
+            confirmButton = {
+                TextButton({ signOutAsk = false; onSignedOut() }) { Text("Sign out", color = Sage) }
+            },
+            dismissButton = {
+                TextButton({ signOutAsk = false }) { Text("Cancel", color = Muted) }
+            },
+        )
     }
 
     updateUi?.let { u ->
@@ -481,7 +630,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         Spacer(Modifier.height(8.dp))
                         Text("Android will ask you to confirm the install.", color = Muted)
                         Spacer(Modifier.height(4.dp))
-                        TextButton({ store.skippedUpdate = u.info.versionName; updateUi = null }) {
+                        TextButton({ queueStore.skippedUpdate = u.info.versionName; updateUi = null }) {
                             Text("Skip this version", color = Sage)
                         }
                     }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -34,7 +35,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ListenLaterTheme {
-                var screen by remember {
+                var screen by rememberSaveable {
                     mutableStateOf(
                         if (store.token != null && !store.needsLogin) "status" else "signin"
                     )
@@ -42,7 +43,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = Bg) {
                     if (screen == "signin") {
                         SignInScreen(store = store, onLoggedIn = {
-                            if (store.shareQueue().isNotEmpty()) {
+                            if (QueueStore(this@MainActivity).shareQueue().isNotEmpty()) {
                                 ShareWorker.enqueue(this@MainActivity, 0L)
                             }
                             screen = "status"

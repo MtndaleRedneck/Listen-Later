@@ -62,7 +62,7 @@ object Feedback {
 
     fun context() = FeedbackContext(
         BuildConfig.VERSION_NAME,
-        "${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})",
+        android.os.Build.VERSION.RELEASE,
         listOf(android.os.Build.MANUFACTURER, android.os.Build.MODEL).filter { it.isNotBlank() }.joinToString(" "),
     )
 }
@@ -70,7 +70,7 @@ object Feedback {
 @Composable
 fun FeedbackScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
-    var text by remember { mutableStateOf("") }
+    var text by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     val c = remember { Feedback.context() }
     fun open(url: String) = ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
     Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)) {
