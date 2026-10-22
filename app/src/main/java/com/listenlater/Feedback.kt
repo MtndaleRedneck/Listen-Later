@@ -147,7 +147,7 @@ private fun FeedbackButton(label: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Sage, contentColor = Color.White),
+        colors = ButtonDefaults.buttonColors(containerColor = FillGreen, contentColor = Color.White),
         modifier = Modifier.fillMaxWidth().height(46.dp),
     ) {
         Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold)

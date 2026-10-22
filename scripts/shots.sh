@@ -42,3 +42,12 @@ adb exec-out screencap -p > $OUT/v15-settings.png
 tap_text "General feedback, bugs, and feature suggestions"; sleep 2
 adb exec-out screencap -p > $OUT/v15-feedback.png
 ls -la $OUT
+# Before/after for the deeper button green: same screens with the pre-1.5 green.
+shot v15-status-oldgreen --ez demo true --ez sageold true
+shot v15-signin-oldgreen --ez demo true --ez signedout true --ez sageold true
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez sageold true; sleep 5
+tap_text "Settings"; sleep 2
+adb exec-out screencap -p > $OUT/v15-settings-oldgreen.png
+tap_text "General feedback, bugs, and feature suggestions"; sleep 2
+adb exec-out screencap -p > $OUT/v15-feedback-oldgreen.png

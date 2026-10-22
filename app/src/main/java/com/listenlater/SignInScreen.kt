@@ -344,7 +344,7 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                     Button(
                         onClick = { submit() },
                         enabled = !loading,
-                        colors = ButtonDefaults.buttonColors(containerColor = Sage, contentColor = androidx.compose.ui.graphics.Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = FillGreen, contentColor = androidx.compose.ui.graphics.Color.White),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {

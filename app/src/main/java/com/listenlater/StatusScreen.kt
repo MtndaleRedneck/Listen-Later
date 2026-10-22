@@ -558,7 +558,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = SageFill,
+                                containerColor = FillGreen,
                                 contentColor = Color.White
                             ),
                             modifier = Modifier.fillMaxWidth()
