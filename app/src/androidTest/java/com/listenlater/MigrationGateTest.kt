@@ -179,8 +179,11 @@ class MigrationGateTest {
         QueueStore(ctx).enqueueShare("https://youtu.be/sur555vive5", "Already queued")
 
         // Find the raw storage key that backs the encrypted "queue" entry, then
-        // corrupt its ciphertext so the read genuinely fails.
+        // corrupt its ciphertext so the read genuinely fails. The entry is removed
+        // first: key names are deterministic, so only a clear-then-write makes the
+        // entry identifiable as the one that reappears.
         val raw = ctx.getSharedPreferences("creds", 0)
+        encryptedPrefs().edit().remove("queue").commit()
         val before = raw.all.keys
         encryptedPrefs().edit()
             .putString("queue", "[\"https://youtu.be/leg666acy66\"]")
