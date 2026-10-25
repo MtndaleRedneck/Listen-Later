@@ -161,19 +161,16 @@ class CredStore private constructor(private val appContext: Context, private val
             if (plain.migrated) return
             val enc = shared(app)
             if (migrationSlowdownMs > 0) Thread.sleep(migrationSlowdownMs) // tests only; 0 in production
+            // Reads first: a failure here writes nothing, and the next launch retries.
             val queue = enc.getString("queue", null)
             val skippedUpdate = enc.getString("skipped_update", null)
-            if (queue != null) plain.importQueue(queue)
-            if (skippedUpdate != null) plain.skippedUpdate = skippedUpdate
-            // Mark done BEFORE touching the legacy store: a failure past this point must
-            // never re-run the migration - a re-run would import the stale legacy queue
-            // over shares queued in between and lose them. Leftover legacy values are
-            // inert, because this flag is the only guard.
-            plain.migrated = true
+            // Then one atomic write for the import and the marker together - no window
+            // where imported data exists without the marker (see QueueStore).
+            plain.importQueueAndMarkMigrated(queue, skippedUpdate)
             try {
                 enc.edit().remove("queue").remove("attempts").remove("skipped_update").apply()
             } catch (e: Exception) {
-                // See above: stale legacy values cost nothing.
+                // Stale legacy values are inert: the migrated marker is the only guard.
             }
             // The old queue-wide retry counter is deliberately not carried over: retries
             // are per link now, and a stale count would only mis-delay one share.
