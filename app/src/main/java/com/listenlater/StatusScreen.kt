@@ -87,6 +87,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 const val FEED_ID = "individual-videos-youtube"
 
@@ -154,17 +157,14 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     var retryingId by remember { mutableStateOf<String?>(null) }
     var pendingApk by remember { mutableStateOf<File?>(null) }
     var signOutAsk by remember { mutableStateOf(false) }
-    var queued by remember { mutableStateOf(queueStore.shareQueue()) }
-    var skipped by remember { mutableStateOf(queueStore.skipped()) }
+    var queued by remember { mutableStateOf(listOf<QueueStore.Queued>()) }
+    var skipped by remember { mutableStateOf(listOf<QueueStore.Skipped>()) }
 
-    // Queued and skipped rows follow the store: the worker updates it from the background.
-    DisposableEffect(Unit) {
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-            queued = queueStore.shareQueue()
-            skipped = queueStore.skipped()
-        }
-        queueStore.addListener(listener)
-        onDispose { queueStore.removeListener(listener) }
+    /** Failed items clear themselves after about a day; cancel their notifications too. */
+    fun sweepSkipped() {
+        val cleared = queueStore.sweepExpiredSkipped()
+        cleared.forEach { Notifier.cancelSkipped(context, it) }
+        if (cleared.isNotEmpty()) skipped = queueStore.skipped()
     }
 
     fun host(): String = (store.server ?: "").removePrefix("https://").removePrefix("http://")
@@ -213,6 +213,16 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 }
                 loadFailed = false
                 loading = false
+                // Sends work again: hand any parked "Couldn't reach your server" shares back to the queue.
+                val parked = queueStore.takeUnreachableSkipped()
+                if (parked.isNotEmpty()) {
+                    parked.forEach {
+                        queueStore.enqueueShare(it.url, it.title)
+                        Notifier.cancelSkipped(context, it.url)
+                    }
+                    queued = queueStore.shareQueue()
+                    ShareWorker.enqueue(context, 0L)
+                }
                 onDone?.invoke()
             } catch (e: Api.SessionExpired) {
                 onSessionExpired()
@@ -223,6 +233,19 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 onDone?.invoke()
             }
         }
+    }
+
+    // Queued and skipped rows follow the store, but only after startup migration has
+    // finished - and when the queue shrinks, a send finished, so reload the list.
+    DisposableEffect(Unit) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            val before = queued.size
+            queued = queueStore.shareQueue()
+            skipped = queueStore.skipped()
+            if (queued.size < before) load()
+        }
+        queueStore.addListener(listener)
+        onDispose { queueStore.removeListener(listener) }
     }
 
     /** Once per open: ask GitHub for a newer release. Silent on any failure. */
@@ -306,15 +329,26 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     }
 
     LaunchedEffect(Unit) {
+        (context.applicationContext as ListenLaterApp).ready.await()
+        sweepSkipped()
+        queued = queueStore.shareQueue()
+        skipped = queueStore.skipped()
         load()
         checkForUpdate()
     }
 
-    // While anything is still downloading, quietly re-read the list every 10 seconds.
-    LaunchedEffect(episodes) {
-        if (episodes.any { it.status == "PENDING" || it.status == "DOWNLOADING" }) {
+    // While the screen is visible and anything is pending/downloading/queued,
+    // quietly re-read the list every 10 seconds. One loop, so it can't stall on
+    // an unchanged list, and it stops when the app is in the background.
+    var resumed by remember { mutableStateOf(true) }
+    LaunchedEffect(resumed) {
+        while (resumed) {
             delay(10_000)
-            load()
+            if (!resumed) break
+            if (episodes.any { it.status == "PENDING" || it.status == "DOWNLOADING" } || queued.isNotEmpty()) {
+                sweepSkipped()
+                load()
+            }
         }
     }
 
@@ -322,11 +356,18 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && pendingApk != null &&
-                context.packageManager.canRequestPackageInstalls()
-            ) {
-                launchInstaller(pendingApk!!)
-                pendingApk = null
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    resumed = true
+                    sweepSkipped()
+                    load()
+                    if (pendingApk != null && context.packageManager.canRequestPackageInstalls()) {
+                        launchInstaller(pendingApk!!)
+                        pendingApk = null
+                    }
+                }
+                Lifecycle.Event.ON_PAUSE -> resumed = false
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -417,18 +458,33 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                     modifier = Modifier.weight(1f)) {
                     Box {
                     Column(Modifier.verticalScroll(listScroll).padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 64.dp)) {
-                        queued.forEach { url ->
-                            val id = VideoUrl.extractVideoId(url)
+                        queued.forEach { q ->
+                            val id = VideoUrl.extractVideoId(q.url)
+                            val now = System.currentTimeMillis()
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                                    Text("Video waiting to send", fontSize = 15.sp, color = TextC)
-                                    if (id != null) Text(id, fontSize = 12.sp, color = Muted)
+                                    Text(
+                                        q.title.ifEmpty { "Video waiting to send" },
+                                        fontSize = 15.sp, color = TextC,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (q.title.isEmpty() && id != null) Text(id, fontSize = 12.sp, color = Muted)
                                 }
-                                Text("Sending", fontSize = 13.sp, color = Muted)
+                                Text(
+                                    when {
+                                        store.needsLogin -> "Waiting for sign-in"
+                                        q.unexpectedSince != null && now - (q.unexpectedSince ?: now) >= 60 * 60 * 1000 ->
+                                            "Server answered unexpectedly"
+                                        q.nextRetryAt > now ->
+                                            "Retrying at " + SimpleDateFormat("h:mm", Locale.getDefault()).format(Date(q.nextRetryAt))
+                                        else -> "Sending"
+                                    },
+                                    fontSize = 13.sp, color = Muted
+                                )
                             }
                         }
                         skipped.forEach { sk ->
@@ -452,8 +508,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                     Text("Try again", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.clickable {
                                             queueStore.removeSkipped(sk.url)
-                                            queueStore.enqueueShare(sk.url)
-                                            queueStore.attempts = 0
+                                            queueStore.enqueueShare(sk.url, sk.title)
                                             Notifier.cancelSkipped(context, sk.url)
                                             ShareWorker.enqueue(context, 0L)
                                         }.padding(horizontal = 12.dp, vertical = 12.dp))

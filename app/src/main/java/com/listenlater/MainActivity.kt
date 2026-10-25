@@ -9,32 +9,21 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 
 class MainActivity : ComponentActivity() {
-
-    private lateinit var store: CredStore
 
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        store = CredStore(this)
-
-        // CI screenshots: seed canned demo state (debug builds only).
-        if (BuildConfig.DEBUG && intent.getBooleanExtra("demo", false)) {
-            Demo.active = true
-            Demo.forceLoadFail = intent.getBooleanExtra("loadfail", false)
-            if (intent.getBooleanExtra("signedout", false)) Demo.seedSignedOut(this)
-            else Demo.seedSignedIn(this)
-            if (intent.getBooleanExtra("empty", false)) QueueStore(this).clearAll()
-        }
 
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -44,31 +33,49 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ListenLaterTheme {
-                var screen by rememberSaveable {
-                    mutableStateOf(
-                        if (store.token != null && !store.needsLogin) "status" else "signin"
-                    )
+                // Storage readies off the opening path: until the startup gate
+                // completes, the app's plain background shows - no logo, no spinner.
+                var store by remember { mutableStateOf<CredStore?>(null) }
+                LaunchedEffect(Unit) {
+                    (application as ListenLaterApp).ready.await()
+                    // CI screenshots: seed canned demo state (debug builds only).
+                    if (BuildConfig.DEBUG && intent.getBooleanExtra("demo", false)) {
+                        Demo.active = true
+                        Demo.forceLoadFail = intent.getBooleanExtra("loadfail", false)
+                        if (intent.getBooleanExtra("signedout", false)) Demo.seedSignedOut(this@MainActivity)
+                        else Demo.seedSignedIn(this@MainActivity)
+                        if (intent.getBooleanExtra("empty", false)) QueueStore(this@MainActivity).clearAll()
+                    }
+                    store = CredStore(this@MainActivity)
                 }
                 Surface(modifier = Modifier.fillMaxSize(), color = Bg) {
-                    if (screen == "signin") {
-                        SignInScreen(store = store, onLoggedIn = {
-                            if (QueueStore(this@MainActivity).shareQueue().isNotEmpty()) {
-                                ShareWorker.enqueue(this@MainActivity, 0L)
-                            }
-                            screen = "status"
-                        })
-                    } else {
-                        StatusScreen(
-                            store = store,
-                            onSignedOut = {
-                                store.signOut()
-                                screen = "signin"
-                            },
-                            onSessionExpired = {
-                                store.needsLogin = true
-                                screen = "signin"
-                            }
-                        )
+                    val s = store
+                    if (s != null) {
+                        var screen by rememberSaveable {
+                            mutableStateOf(
+                                if (s.token != null && !s.needsLogin) "status" else "signin"
+                            )
+                        }
+                        if (screen == "signin") {
+                            SignInScreen(store = s, onLoggedIn = {
+                                if (QueueStore(this@MainActivity).shareQueue().isNotEmpty()) {
+                                    ShareWorker.enqueue(this@MainActivity, 0L)
+                                }
+                                screen = "status"
+                            })
+                        } else {
+                            StatusScreen(
+                                store = s,
+                                onSignedOut = {
+                                    s.signOut()
+                                    screen = "signin"
+                                },
+                                onSessionExpired = {
+                                    s.needsLogin = true
+                                    screen = "signin"
+                                }
+                            )
+                        }
                     }
                 }
             }

@@ -18,6 +18,9 @@ class Api(private val server: String, private val token: String?) {
     class SessionExpired : Exception()
     class ApiError(message: String) : Exception(message)
 
+    /** A reply that isn't a proper answer at all (an HTML page, a proxy error). */
+    class UnexpectedResponse(val httpCode: Int) : java.io.IOException("Unexpected response ($httpCode)")
+
     data class ShareResult(val duplicate: Boolean)
 
     private val jsonType = "application/json; charset=utf-8".toMediaType()
@@ -44,23 +47,38 @@ class Api(private val server: String, private val token: String?) {
         return b
     }
 
+    /**
+     * Classify by what the server actually said:
+     * 401, or a JSON reply saying the sign-in is missing/expired, asks him to sign in;
+     * 5xx, 408 and 429 are weather and get quiet retries; a body that isn't JSON is
+     * something between us and the app answering; only a real {code,msg} refusal
+     * is treated as the server saying no.
+     */
     private fun call(req: Request): JSONObject {
         client.newCall(req).execute().use { res ->
             if (res.code == 401) throw SessionExpired()
-            // 500 and up is the server down (Caddy answers 502 while PigeonPod restarts),
-            // not a refusal: take the quiet-retry path like a lost connection.
             if (res.code >= 500) throw java.io.IOException("Server error ${res.code}")
+            if (res.code == 408 || res.code == 429) throw java.io.IOException("Temporary (${res.code})")
             val body = res.body?.string().orEmpty()
             val json = try {
                 JSONObject(body)
             } catch (e: Exception) {
-                throw ApiError("Unexpected response (${res.code})")
+                throw UnexpectedResponse(res.code)
             }
             if (json.optInt("code", 0) != 200) {
-                throw ApiError(json.optString("msg", "Request failed"))
+                val msg = json.optString("msg", "")
+                if (looksLikeAuthFailure(msg)) throw SessionExpired()
+                throw ApiError(msg.ifEmpty { "Request failed" })
             }
             return json
         }
+    }
+
+    /** The server words a missing or expired sign-in a few ways, e.g. "未能读取到有效 token". */
+    private fun looksLikeAuthFailure(msg: String): Boolean {
+        if (msg.isEmpty()) return false
+        val m = msg.lowercase()
+        return m.contains("token") || m.contains("登录") || m.contains("登陆") || m.contains("login")
     }
 
     fun captchaEnabled(): Boolean =
@@ -120,11 +138,22 @@ class Api(private val server: String, private val token: String?) {
         return ShareResult(message.contains("already in", ignoreCase = true))
     }
 
-    fun episodes(feedId: String): List<JSONObject> {
-        val data = call(get("/api/episode/list/$feedId?size=50")).optJSONObject("data")
+    fun episodes(feedId: String, page: Int = 1, size: Int = 50): List<JSONObject> {
+        val data = call(get("/api/episode/list/$feedId?page=$page&size=$size")).optJSONObject("data")
             ?: return emptyList()
         val records = data.optJSONArray("records") ?: return emptyList()
         return (0 until records.length()).map { records.getJSONObject(it) }
+    }
+
+    /** Exact lookup: the server matches episode IDs directly (YouTube video IDs for YouTube feeds). */
+    fun episodeStatus(ids: List<String>): List<JSONObject> {
+        val arr = org.json.JSONArray()
+        ids.forEach { arr.put(it) }
+        val req = authed(Request.Builder().url(base() + "/api/episode/status"))
+            .post(arr.toString().toRequestBody(jsonType))
+            .build()
+        val data = call(req).optJSONArray("data") ?: return emptyList()
+        return (0 until data.length()).map { data.getJSONObject(it) }
     }
 
     /** Re-kicks a cleaned-up (READY) episode. Server accepts READY only. */

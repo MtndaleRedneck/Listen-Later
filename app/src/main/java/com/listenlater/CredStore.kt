@@ -109,6 +109,14 @@ class CredStore private constructor(private val appContext: Context, private val
         private fun shared(ctx: Context): SharedPreferences =
             instance ?: synchronized(this) { instance ?: open(ctx).also { instance = it } }
 
+        /** Build the shared instance off the main thread during startup. */
+        fun warm(ctx: Context) {
+            shared(ctx.applicationContext)
+        }
+
+        /** Test hook: slow the one-time migration so a mid-migration reader can be exercised. */
+        @Volatile var migrationSlowdownMs: Long = 0L
+
         private fun create(ctx: Context): SharedPreferences = EncryptedSharedPreferences.create(
             ctx,
             "creds",
@@ -152,13 +160,14 @@ class CredStore private constructor(private val appContext: Context, private val
             val plain = QueueStore(app)
             if (plain.migrated) return
             val enc = shared(app)
+            if (migrationSlowdownMs > 0) Thread.sleep(migrationSlowdownMs) // tests only; 0 in production
             val queue = enc.getString("queue", null)
-            val attempts = enc.getInt("attempts", 0)
             val skippedUpdate = enc.getString("skipped_update", null)
             if (queue != null) plain.importQueue(queue)
-            if (attempts != 0) plain.attempts = attempts
             if (skippedUpdate != null) plain.skippedUpdate = skippedUpdate
             enc.edit().remove("queue").remove("attempts").remove("skipped_update").apply()
+            // The old queue-wide retry counter is deliberately not carried over: retries
+            // are per link now, and a stale count would only mis-delay one share.
             plain.migrated = true
         }
     }

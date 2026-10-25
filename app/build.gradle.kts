@@ -12,8 +12,9 @@ android {
         applicationId = "com.listenlater"
         minSdk = 31
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.5.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        versionCode = 9
+        versionName = "1.6.0"
     }
 
     // Release signing key is private and never committed. CI passes it in through environment
@@ -63,4 +64,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
 }
