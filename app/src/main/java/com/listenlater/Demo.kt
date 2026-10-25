@@ -36,6 +36,26 @@ object Demo {
     }
 
     /** Signed out with shares waiting: the sign-in screen shows the waiting line. */
+    /**
+     * CI screenshots: queued rows in each real status, with the real shared titles -
+     * sending, retrying at a time, unexpected server replies past an hour, and one
+     * very long title for the wrap check.
+     */
+    fun seedQueueStates(ctx: Context) {
+        val now = System.currentTimeMillis()
+        val json = org.json.JSONArray()
+        fun row(u: String, t: String, a: Int, r: Long, x: Long?) {
+            val o = org.json.JSONObject().put("u", u).put("t", t).put("a", a).put("r", r)
+            if (x != null) o.put("x", x)
+            json.put(o)
+        }
+        row("https://www.youtube.com/watch?v=q1w2e3r4t5y", "The video he just shared from YouTube", 0, 0L, null)
+        row("https://www.youtube.com/watch?v/z1x2c3v4b5n", "A second share waiting for its retry", 1, now + 25 * 60 * 1000L, null)
+        row("https://www.youtube.com/watch?v/p1o2i3u4y5t", "A share the server keeps answering oddly", 2, now + 45 * 60 * 1000L, now - 2 * 60 * 60 * 1000L)
+        row("https://www.youtube.com/watch?v/l1k2j3h4g5f", "An extremely long shared video title that keeps going and going well past what two lines of the row can hold on any phone screen", 0, 0L, null)
+        QueueStore(ctx).importQueue(json.toString())
+    }
+
     fun seedSignedOut(ctx: Context) {
         val store = CredStore(ctx)
         store.server = "https://demo.listenlater.example"
