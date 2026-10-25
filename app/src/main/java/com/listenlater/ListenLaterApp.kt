@@ -28,9 +28,18 @@ class ListenLaterApp : Application() {
         // Storage work never runs on the main thread: migration and the first
         // encrypted-store open both happen here, before any reader proceeds.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            // Each step gets its own guard: a failed migration leaves the flag unset
+            // and retries next launch, and the credential store still warms off the
+            // main thread instead of paying its first open on the opening screen.
             try {
                 CredStore.migrateToPlain(app)
+            } catch (e: Exception) {
+                // Retried on next launch; nothing was imported unless it completed.
+            }
+            try {
                 CredStore.warm(app)
+            } catch (e: Exception) {
+                // The first credential read falls back to opening inline.
             } finally {
                 ready.complete(Unit)
             }
