@@ -55,6 +55,7 @@ class MigrationGateTest {
         QueueStore(ctx).clearAll()
         QueueStore(ctx).migrated = true
         encryptedPrefs().edit().remove("queue").commit()
+        ctx.getSharedPreferences("queue_store", 0).edit().remove("migration_backup_queue").commit()
     }
 
     @Test
@@ -137,19 +138,19 @@ class MigrationGateTest {
      * data without the marker. These two tests pin both sides of that boundary.
      */
     @Test
-    fun corruptLegacyValueMigratesEmptyAndMarksDone() {
+    fun corruptLegacyValueIsBackedUpAndMarkedDone() {
         CredStore.migrationSlowdownMs = 0L
         encryptedPrefs().edit().putString("queue", "{not json").commit()
         QueueStore(ctx).migrated = false
 
         CredStore.migrateToPlain(ctx)
 
-        // Unreadable legacy data is abandoned, not retried forever: marker set, queue empty.
+        // Unreadable legacy data is not silently dropped: the raw value is backed
+        // up, the marker is set (no retry loop), and the queue migrates empty.
         assertTrue(QueueStore(ctx).migrated)
         assertTrue(QueueStore(ctx).shareQueue().isEmpty())
-        // And a later pass does not resurrect anything.
-        CredStore.migrateToPlain(ctx)
-        assertTrue(QueueStore(ctx).shareQueue().isEmpty())
+        assertEquals("{not json",
+            ctx.getSharedPreferences("queue_store", 0).getString("migration_backup_queue", null))
     }
 
     @Test
@@ -162,5 +163,77 @@ class MigrationGateTest {
 
         assertTrue(QueueStore(ctx).migrated)
         assertTrue(QueueStore(ctx).shareQueue().isEmpty())
+    }
+
+    /**
+     * True pre-write failure: the legacy READ itself throws (the stored ciphertext
+     * for "queue" is corrupted at the raw level, so decryption fails). Nothing may
+     * be written: the marker stays unset, an already-queued share survives, and
+     * once the value is repaired the next pass imports cleanly.
+     */
+    @Test
+    fun legacyReadFailureWritesNothingAndRetries() {
+        CredStore.migrationSlowdownMs = 0L
+        QueueStore(ctx).clearAll()
+        QueueStore(ctx).migrated = false
+        QueueStore(ctx).enqueueShare("https://youtu.be/sur555vive5", "Already queued")
+
+        // Find the raw storage key that backs the encrypted "queue" entry, then
+        // corrupt its ciphertext so the read genuinely fails.
+        val raw = ctx.getSharedPreferences("creds", 0)
+        val before = raw.all.keys
+        encryptedPrefs().edit()
+            .putString("queue", "[\"https://youtu.be/leg666acy66\"]")
+            .commit()
+        val added = raw.all.keys - before
+        assertTrue("expected raw entries for the encrypted value", added.isNotEmpty())
+        added.forEach { raw.edit().putString(it, "AAAA corrupted").commit() }
+
+        var threw = false
+        try {
+            CredStore.migrateToPlain(ctx)
+        } catch (t: Throwable) {
+            threw = true // the app catches this in its startup guard; here we verify
+        }
+        assertTrue("the corrupt read must fail, not migrate empty", threw)
+        assertTrue("no marker may be written on a failed read", !QueueStore(ctx).migrated)
+        assertEquals(
+            "the already-queued share must be untouched",
+            listOf("https://youtu.be/sur555vive5"),
+            QueueStore(ctx).shareQueue().map { it.url }
+        )
+
+        // Repaired value: the retry imports and merges, keeping the existing share.
+        encryptedPrefs().edit()
+            .putString("queue", "[\"https://youtu.be/leg666acy66\"]")
+            .commit()
+        CredStore.migrateToPlain(ctx)
+        val queue = QueueStore(ctx).shareQueue()
+        assertTrue(QueueStore(ctx).migrated)
+        assertEquals(2, queue.size)
+        assertTrue(queue.any { it.url == "https://youtu.be/sur555vive5" })
+        assertTrue(queue.any { it.url == "https://youtu.be/leg666acy66" })
+    }
+
+    /**
+     * The state an unconfirmed durable write can leave: the plain queue already
+     * holds a share, the marker never persisted, and the legacy data is still
+     * there. The retry must merge - never overwrite - so the share survives.
+     */
+    @Test
+    fun retryAfterUnconfirmedCommitMergesInsteadOfOverwriting() {
+        CredStore.migrationSlowdownMs = 0L
+        QueueStore(ctx).clearAll()
+        QueueStore(ctx).migrated = false
+        QueueStore(ctx).enqueueShare("https://youtu.be/kee333pee33", "Queued between attempts")
+
+        CredStore.migrateToPlain(ctx)
+
+        val queue = QueueStore(ctx).shareQueue()
+        assertEquals(3, queue.size)
+        assertTrue(queue.any { it.url == "https://youtu.be/kee333pee33" })
+        assertTrue(queue.any { it.url == "https://youtu.be/aaa111bbb22" })
+        assertTrue(queue.any { it.url == "https://www.youtube.com/watch?v=ccc333ddd44" })
+        assertTrue(QueueStore(ctx).migrated)
     }
 }

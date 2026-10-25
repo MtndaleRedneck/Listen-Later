@@ -166,12 +166,16 @@ class CredStore private constructor(private val appContext: Context, private val
             val skippedUpdate = enc.getString("skipped_update", null)
             // Then one atomic write for the import and the marker together - no window
             // where imported data exists without the marker (see QueueStore).
-            plain.importQueueAndMarkMigrated(queue, skippedUpdate)
-            try {
-                enc.edit().remove("queue").remove("attempts").remove("skipped_update").apply()
-            } catch (e: Exception) {
-                // Stale legacy values are inert: the migrated marker is the only guard.
+            val durable = plain.importQueueAndMarkMigrated(queue, skippedUpdate)
+            if (durable) {
+                try {
+                    enc.edit().remove("queue").remove("attempts").remove("skipped_update").apply()
+                } catch (e: Exception) {
+                    // Stale legacy values are inert: the migrated marker is the only guard.
+                }
             }
+            // When the durable write is unconfirmed the legacy source stays in place;
+            // the import merges, so the next launch's retry loses nothing.
             // The old queue-wide retry counter is deliberately not carried over: retries
             // are per link now, and a stale count would only mis-delay one share.
         }
