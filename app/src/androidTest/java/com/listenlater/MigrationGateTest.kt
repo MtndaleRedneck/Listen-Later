@@ -35,6 +35,11 @@ class MigrationGateTest {
 
     @Before
     fun setUp() {
+        // Let the app's own startup migration finish first: on a fresh install it
+        // finds nothing and flips the flag, and resetting the flag before it settles
+        // would race it. The scenario below is the upgrade case: flag off, legacy
+        // data present, one migration running while a reader waits on the gate.
+        runBlocking { (ctx.applicationContext as ListenLaterApp).ready.await() }
         QueueStore(ctx).clearAll()
         QueueStore(ctx).migrated = false
         // The old install's queue, in the old bare-list form, still in the encrypted store.
@@ -56,11 +61,14 @@ class MigrationGateTest {
     fun gatedReaderSeesImportedQueueExactlyOnce() {
         val gate = CompletableDeferred<Unit>()
         var queueDuringMigration: List<QueueStore.Queued>? = null
+        var migratorError: Throwable? = null
 
         val migrator = thread {
             try {
                 CredStore.migrateToPlain(ctx)
                 CredStore.migrateToPlain(ctx) // a racing second pass must be a no-op
+            } catch (t: Throwable) {
+                migratorError = t
             } finally {
                 gate.complete(Unit)
             }
@@ -77,6 +85,7 @@ class MigrationGateTest {
         }
         migrator.join(10_000)
 
+        org.junit.Assert.assertNull("migration itself failed", migratorError)
         assertTrue("queue must stay hidden behind the gate", queueDuringMigration!!.isEmpty())
         assertEquals(2, queueAfterGate.size)
         assertEquals("https://youtu.be/aaa111bbb22", queueAfterGate[0].url)
