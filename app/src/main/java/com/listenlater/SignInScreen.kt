@@ -277,6 +277,12 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                     Field("PASSWORD", password, { password = it }, "password",
                         secret = !showPassword,
                         keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Go,
+                        keyboardActions = KeyboardActions(onGo = {
+                            if (!captchaOn) submit() else {
+                                try { captchaFocus.requestFocus() } catch (e: Exception) { }
+                            }
+                        }),
                         autofillContentType = ContentType.Password,
                         trailing = {
                             IconButton(
