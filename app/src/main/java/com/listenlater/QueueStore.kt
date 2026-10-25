@@ -77,13 +77,7 @@ class QueueStore(context: Context) {
     }
 
     private fun saveQueue(list: List<Queued>) {
-        val arr = JSONArray()
-        list.forEach { q ->
-            val o = JSONObject().put("u", q.url).put("t", q.title).put("a", q.attempts).put("r", q.nextRetryAt)
-            if (q.unexpectedSince != null) o.put("x", q.unexpectedSince)
-            arr.put(o)
-        }
-        prefs.edit().putString("queue", arr.toString()).apply()
+        prefs.edit().putString("queue", serialize(list)).apply()
     }
 
     fun enqueueShare(url: String, title: String = ""): Unit = synchronized(QueueStore::class.java) {
@@ -130,20 +124,54 @@ class QueueStore(context: Context) {
      * the imported queue in place with the marker unset - the state that would let a
      * later launch re-import stale legacy data over shares queued in between. Any
      * failure before this commit leaves both untouched, and the next launch retries.
+     *
+     * The import MERGES into the current queue instead of replacing it: a retry after
+     * an unconfirmed commit can find shares queued since the first attempt, and those
+     * must survive. A corrupt legacy value is not silently dropped - the raw text is
+     * backed up under migration_backup_queue. Returns commit()'s result: false means
+     * the durable write is unconfirmed and the caller must keep the legacy source.
      */
-    fun importQueueAndMarkMigrated(rawQueue: String?, skippedUpdate: String?): Unit = synchronized(QueueStore::class.java) {
+    fun importQueueAndMarkMigrated(rawQueue: String?, skippedUpdate: String?): Boolean = synchronized(QueueStore::class.java) {
         val editor = prefs.edit()
         if (rawQueue != null) {
             try {
-                JSONArray(rawQueue) // validate before trusting it
-                editor.putString("queue", rawQueue)
+                val arr = JSONArray(rawQueue)
+                val merged = shareQueue().toMutableList()
+                for (i in 0 until arr.length()) {
+                    val entry = arr.get(i)
+                    val q = if (entry is JSONObject) {
+                        Queued(
+                            url = entry.optString("u", ""),
+                            title = entry.optString("t", ""),
+                            attempts = entry.optInt("a", 0),
+                            nextRetryAt = entry.optLong("r", 0L),
+                            unexpectedSince = if (entry.has("x")) entry.optLong("x") else null
+                        )
+                    } else {
+                        // Older installs stored bare links.
+                        Queued(url = entry.toString())
+                    }
+                    if (q.url.isNotEmpty() && merged.none { it.url == q.url }) merged.add(q)
+                }
+                editor.putString("queue", serialize(merged))
             } catch (e: Exception) {
-                // Corrupt legacy value: migrate empty rather than crash a first launch.
+                // Unreadable legacy data: keep the raw value rather than lose it.
+                editor.putString("migration_backup_queue", rawQueue)
             }
         }
         if (skippedUpdate != null) editor.putString("skipped_update", skippedUpdate)
         editor.putBoolean("migrated", true)
         editor.commit()
+    }
+
+    private fun serialize(list: List<Queued>): String {
+        val arr = JSONArray()
+        list.forEach { q ->
+            val o = JSONObject().put("u", q.url).put("t", q.title).put("a", q.attempts).put("r", q.nextRetryAt)
+            if (q.unexpectedSince != null) o.put("x", q.unexpectedSince)
+            arr.put(o)
+        }
+        return arr.toString()
     }
 
     fun skipped(): List<Skipped> = synchronized(QueueStore::class.java) {
