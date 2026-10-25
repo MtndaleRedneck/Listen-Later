@@ -129,4 +129,38 @@ class MigrationGateTest {
         assertTrue(queue.any { it.url == "https://youtu.be/aaa111bbb22" })
         assertTrue(queue.any { it.url == "https://www.youtube.com/watch?v=ccc333ddd44" })
     }
+
+    /**
+     * The import and the migrated marker are one commit (QueueStore.importQueueAndMarkMigrated),
+     * so a failure can only leave "nothing written" (retry next launch) or "queue and
+     * marker together" (done, cleanup best-effort) - never the loss window of imported
+     * data without the marker. These two tests pin both sides of that boundary.
+     */
+    @Test
+    fun corruptLegacyValueMigratesEmptyAndMarksDone() {
+        CredStore.migrationSlowdownMs = 0L
+        encryptedPrefs().edit().putString("queue", "{not json").commit()
+        QueueStore(ctx).migrated = false
+
+        CredStore.migrateToPlain(ctx)
+
+        // Unreadable legacy data is abandoned, not retried forever: marker set, queue empty.
+        assertTrue(QueueStore(ctx).migrated)
+        assertTrue(QueueStore(ctx).shareQueue().isEmpty())
+        // And a later pass does not resurrect anything.
+        CredStore.migrateToPlain(ctx)
+        assertTrue(QueueStore(ctx).shareQueue().isEmpty())
+    }
+
+    @Test
+    fun absentLegacyValueMigratesEmptyAndMarksDone() {
+        CredStore.migrationSlowdownMs = 0L
+        encryptedPrefs().edit().remove("queue").commit()
+        QueueStore(ctx).migrated = false
+
+        CredStore.migrateToPlain(ctx)
+
+        assertTrue(QueueStore(ctx).migrated)
+        assertTrue(QueueStore(ctx).shareQueue().isEmpty())
+    }
 }

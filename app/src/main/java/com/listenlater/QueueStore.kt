@@ -124,6 +124,28 @@ class QueueStore(context: Context) {
         }
     }
 
+    /**
+     * The migration's one durable write: imported queue, skipped-update choice and the
+     * migrated marker land in a single editor commit, so no crash or failure can leave
+     * the imported queue in place with the marker unset - the state that would let a
+     * later launch re-import stale legacy data over shares queued in between. Any
+     * failure before this commit leaves both untouched, and the next launch retries.
+     */
+    fun importQueueAndMarkMigrated(rawQueue: String?, skippedUpdate: String?): Unit = synchronized(QueueStore::class.java) {
+        val editor = prefs.edit()
+        if (rawQueue != null) {
+            try {
+                JSONArray(rawQueue) // validate before trusting it
+                editor.putString("queue", rawQueue)
+            } catch (e: Exception) {
+                // Corrupt legacy value: migrate empty rather than crash a first launch.
+            }
+        }
+        if (skippedUpdate != null) editor.putString("skipped_update", skippedUpdate)
+        editor.putBoolean("migrated", true)
+        editor.commit()
+    }
+
     fun skipped(): List<Skipped> = synchronized(QueueStore::class.java) {
         val raw = prefs.getString("skipped", "[]") ?: "[]"
         try {
