@@ -1,8 +1,10 @@
-## What's new in 1.5.0
+## What's new in 1.6.0
 
-- Sharing a video that aged off the feed now gets it downloading again instead of a wrong "Already in your feed".
-- A video the server can't take is skipped right away, named in a notification with a Try again button, and waits in the list under "Couldn't get it".
-- When the server can't be reached the app says so honestly, keeps your last list on screen, and the Copy button stays put.
-- The list refreshes itself while downloads run, and videos waiting to send show at the top as "Sending".
-- Friendlier monthly sign-in: tap the picture for a new one, Enter signs in, plain error words.
-- Sign out asks first, retry is easier to tap, updates clean up after themselves, and screens keep their place.
+- The list keeps refreshing itself while anything is downloading or waiting, not just for the first 10 seconds, and it updates when you come back to the app.
+- If your server is down a while, shares stay queued and keep trying, and they send on their own once it's back. One stuck video no longer blocks the rest.
+- Sharing when the server can't be reached shows a short message so you know it will keep trying.
+- Re-sharing an older video is recognized properly instead of a wrong "Already in your feed", and a brief server hiccup no longer marks a video "Couldn't get it".
+- Waiting shares show the video's title and what they're doing: "Waiting for sign-in", "Retrying at 3:40", or "Sending".
+- "Couldn't get it" items keep their Try again and clear themselves after about a day.
+- Popups name the video: "Already downloading" for one still on its way, and "Sent" with the title when it lands.
+- Enter in the password box signs you in, and the app starts faster.
