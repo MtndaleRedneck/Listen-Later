@@ -98,4 +98,35 @@ class MigrationGateTest {
         // The double pass must not have duplicated anything.
         assertEquals(2, QueueStore(ctx).shareQueue().size)
     }
+
+    /**
+     * The interrupted-cleanup case: the import finished and the flag was set, but
+     * the legacy value was never removed (the old ordering could leave exactly
+     * this state). Any later pass must not re-import the stale legacy queue over
+     * shares queued in between.
+     */
+    @Test
+    fun migrationRerunAfterInterruptedCleanupKeepsNewShares() {
+        CredStore.migrationSlowdownMs = 0L
+        // setUp already staged two legacy links with the flag off: import them.
+        CredStore.migrateToPlain(ctx)
+        assertEquals(2, QueueStore(ctx).shareQueue().size)
+        assertTrue(QueueStore(ctx).migrated)
+
+        // A share lands after migration.
+        QueueStore(ctx).enqueueShare("https://youtu.be/new222new22", "New share")
+
+        // The legacy cleanup never happened: the stale value is still there.
+        encryptedPrefs().edit()
+            .putString("queue", "[\"https://youtu.be/aaa111bbb22\",\"https://www.youtube.com/watch?v=ccc333ddd44\"]")
+            .commit()
+
+        // A later pass must leave the queue - including the new share - untouched.
+        CredStore.migrateToPlain(ctx)
+        val queue = QueueStore(ctx).shareQueue()
+        assertEquals(3, queue.size)
+        assertTrue(queue.any { it.url == "https://youtu.be/new222new22" })
+        assertTrue(queue.any { it.url == "https://youtu.be/aaa111bbb22" })
+        assertTrue(queue.any { it.url == "https://www.youtube.com/watch?v=ccc333ddd44" })
+    }
 }
