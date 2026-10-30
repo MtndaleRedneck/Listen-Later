@@ -2,7 +2,7 @@
 
 # Listen Later
 
-Share a video to your podcast app. Listen Later is a tiny Android companion
+Share a video to your podcast app. Listen Later is an Android companion
 for a self-hosted [PigeonPod](https://github.com/aizhimou/pigeon-pod) server:
 you share a video to it, the server's built-in Individual Videos feed picks
 it up, and your podcast app plays it like any episode.
