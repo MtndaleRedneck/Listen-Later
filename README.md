@@ -7,7 +7,7 @@ for a self-hosted [PigeonPod](https://github.com/aizhimou/pigeon-pod) server:
 you share a video to it, the server's built-in Individual Videos feed picks
 it up, and your podcast app plays it like any episode.
 
-Inspired by the old [Listenbox](https://listenbox.app) Listen Later app (RIP).
+Inspired by the original Listenbox app, which shut down in 2025. Not affiliated with Listenbox, PigeonPod or YouTube.
 
 ## How it works
 
