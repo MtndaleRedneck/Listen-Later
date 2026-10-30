@@ -29,7 +29,3 @@ podcast app that can subscribe to an RSS feed.
 
 Setup, privacy (including what the update check sends), and screenshots are
 in [docs/details.md](docs/details.md).
-
-## License
-
-GNU General Public License v3.0. See [LICENSE](LICENSE).
