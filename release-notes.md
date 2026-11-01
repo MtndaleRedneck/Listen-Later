@@ -1,6 +1,6 @@
 ## What's new in 1.6.1
 
-- Fixed a crash that could close the app right when you shared a video from another app. Shares that hit this crash were not saved - if a video you shared never arrived in your feed, please share it again.
+- Fixed a crash when sharing a video to Listen Later. Videos shared in 1.6.0 weren't saved, so share them again.
 - The server address on the home screen is tappable and opens your server in the browser.
 
 ## What's new in 1.6.0
