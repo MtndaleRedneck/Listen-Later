@@ -30,8 +30,16 @@ podcast app that can subscribe to an RSS feed.
 Setup, privacy (including what the update check sends), and screenshots are
 in [docs/details.md](docs/details.md).
 
-## Feed cover art
-Square 3000x3000 cover for your podcast feed: [Download podcast-cover-3000.png](https://github.com/MtndaleRedneck/Listen-Later/releases/latest/download/podcast-cover-3000.png)
-1. Download the PNG.
-2. Open your podcast feed's settings on your server or podcast host.
-3. Upload it as the cover art. 3000x3000 meets Apple and Spotify specs.
+## Individual Videos Feed cover art
+This is the cover picture for the PigeonPod feed that Listen Later sends your videos to. PigeonPod calls that feed "Individual Videos" unless you renamed it.
+
+[Download the cover art](https://mtndaleredneck.github.io/Listen-Later/podcast-cover-3000.png)
+
+1. Download the cover art from the link above.
+2. Open PigeonPod in your browser and sign in.
+3. On the home page, click the Individual Videos feed (or the name you gave it).
+4. At the top, click the pencil icon ("Edit title and cover") next to the feed's name. A box called "Customize Feed Info" opens.
+5. Under "Custom Cover", click "Upload Image" and choose the picture you saved.
+6. Click "Confirm".
+
+Your podcast app shows the new cover the next time it refreshes the feed. How long that takes depends on the app.
