@@ -8,6 +8,11 @@ adb shell wm size 1080x2400
 adb shell wm density 480
 adb install -r $APK
 sleep 2
+# Launch once so the launcher clears the not-yet-launched pending-icon treatment
+# (shrunken icon + pale ring) before the shots.
+adb shell am start -n com.listenlater/.MainActivity
+sleep 6
+adb shell am force-stop com.listenlater
 adb shell input keyevent KEYCODE_HOME
 sleep 3
 # App drawer: swipe up from home.
