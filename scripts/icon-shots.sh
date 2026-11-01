@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Capture the launcher home screen and app drawer with the installed debug APK's icon.
 set -x
-APK=$(ls ListenLater-v*.apk | head -1)
+APK=$(ls ListenLater-v*.apk 2>/dev/null | head -1)
+if [ -n "$PROOF_APK_URL" ]; then
+  # Proof mode: shoot a different (e.g. released) APK under the same emulator
+  # to document launcher-side icon treatment independent of our assets.
+  curl -sSL -o proof.apk "$PROOF_APK_URL" && APK=proof.apk
+fi
 OUT=icon-shots
 mkdir -p $OUT
 adb shell wm size 1080x2400

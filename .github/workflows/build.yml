@@ -160,6 +160,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    env:
+      PROOF_APK_URL: https://github.com/MtndaleRedneck/Listen-Later/releases/download/v1.6.0/ListenLater-v1.6.0.apk
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
