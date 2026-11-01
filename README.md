@@ -42,4 +42,4 @@ This is a cover picture you can use for the PigeonPod feed that Listen Later sen
 5. Under "Custom Cover", click "Upload Image" and choose the picture you saved.
 6. Click "Confirm".
 
-Your podcast app shows the new cover the next time it refreshes the feed. Depending on the app is might be a few days. Pocket Casts takes nearly a week to register the change.
+Your podcast app shows the new cover the next time it refreshes the feed. Depending on the app, it might take a few days. Pocket Casts can take nearly a week to register the change.
