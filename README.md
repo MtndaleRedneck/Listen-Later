@@ -29,3 +29,9 @@ podcast app that can subscribe to an RSS feed.
 
 Setup, privacy (including what the update check sends), and screenshots are
 in [docs/details.md](docs/details.md).
+
+## Podcast cover art
+
+The 3000x3000 cover art for the podcast feed lives at
+[docs/podcast-cover-3000.png](docs/podcast-cover-3000.png) and is also
+attached to the latest release for anyone who wants to reuse it.
