@@ -7,8 +7,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.widget.Toast
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -25,31 +23,31 @@ class ShareActivity : Activity() {
         val title = intent?.getStringExtra(Intent.EXTRA_SUBJECT) ?: ""
         val url = VideoUrl.cleanSharedUrl(text)
         when {
-            url == null && VideoUrl.isPlaylistLink(text) -> {
+            url == null && VideoUrl.isPlaylistLink(text) ->
                 Toast.makeText(this, "That's a playlist. Share one video from it.", Toast.LENGTH_LONG).show()
-                finish()
-            }
-            url == null -> {
+            url == null ->
                 Toast.makeText(this, "Couldn't find a video link", Toast.LENGTH_SHORT).show()
-                finish()
-            }
             else -> {
-                val act = this
-                CoroutineScope(Dispatchers.Main).launch {
-                    (application as ListenLaterApp).ready.await()
-                    val store = CredStore(act)
-                    QueueStore(act).enqueueShare(url, title)
+                val app = application as ListenLaterApp
+                // A NoDisplay window must finish before its resume completes, so the
+                // queue write and worker kick happen on the app scope after this
+                // activity is gone. The startup gate is still honored first, and
+                // WorkManager keeps the send even if the process dies right after.
+                app.appScope.launch {
+                    app.ready.await()
+                    val store = CredStore(app)
+                    QueueStore(app).enqueueShare(url, title)
                     when {
                         store.token == null || store.needsLogin ->
-                            Toast.makeText(act, "Saved. Open Listen Later and sign in to send it.", Toast.LENGTH_LONG).show()
-                        !isOnline(act) ->
-                            Toast.makeText(act, "Saved. It'll send when you're back online.", Toast.LENGTH_LONG).show()
+                            Notifier.toast(app, "Saved. Open Listen Later and sign in to send it.", Toast.LENGTH_LONG)
+                        !isOnline(app) ->
+                            Notifier.toast(app, "Saved. It'll send when you're back online.", Toast.LENGTH_LONG)
                     }
-                    ShareWorker.enqueue(act, 0L)
-                    finish()
+                    ShareWorker.enqueue(app, 0L)
                 }
             }
         }
+        finish()
     }
 
     companion object {

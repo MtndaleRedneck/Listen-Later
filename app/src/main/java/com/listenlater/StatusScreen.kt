@@ -426,7 +426,20 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC
                             )
                         }
-                        Text(host(), fontSize = 13.sp, color = Muted)
+                        // Tappable: opens the server in the browser.
+                        Text(
+                            host(),
+                            fontSize = 13.sp, color = Muted,
+                            modifier = Modifier.clickable {
+                                val url = store.server ?: return@clickable
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            }
+                        )
                     }
                 }
             }

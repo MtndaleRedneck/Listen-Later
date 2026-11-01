@@ -99,9 +99,9 @@ object Notifier {
         NotificationManagerCompat.from(context).cancel(skippedId(url))
     }
 
-    fun toast(context: Context, message: String) {
+    fun toast(context: Context, message: String, length: Int = Toast.LENGTH_SHORT) {
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context.applicationContext, message, length).show()
         }
     }
 }
