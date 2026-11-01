@@ -117,7 +117,7 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
-          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.listenlater.MigrationGateTest && ./scripts/share-smoke.sh
+          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.listenlater.MigrationGateTest && adb install -r app/build/outputs/apk/debug/app-debug.apk && ./scripts/share-smoke.sh
 
   # Real screenshots from an emulator on every main push; used for review before release.
   screenshots:
