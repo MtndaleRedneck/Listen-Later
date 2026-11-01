@@ -57,11 +57,12 @@ jobs:
           V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           echo "VERSION=$V" >> $GITHUB_ENV
           cp app/build/outputs/apk/release/app-release.apk ListenLater-v$V.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ListenLater-debug-v$V.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: ListenLater-apk
-          path: ListenLater-v*.apk
+          path: ListenLater-*.apk
 
       # Releases are published only on manual dispatch, after review sign-off.
       # An existing release is never replaced; bump versionName for a new one.

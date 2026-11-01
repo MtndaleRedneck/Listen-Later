@@ -34,16 +34,22 @@ class ShareActivity : Activity() {
                 // activity is gone. The startup gate is still honored first, and
                 // WorkManager keeps the send even if the process dies right after.
                 app.appScope.launch {
-                    app.ready.await()
-                    val store = CredStore(app)
-                    QueueStore(app).enqueueShare(url, title)
-                    when {
-                        store.token == null || store.needsLogin ->
-                            Notifier.toast(app, "Saved. Open Listen Later and sign in to send it.", Toast.LENGTH_LONG)
-                        !isOnline(app) ->
-                            Notifier.toast(app, "Saved. It'll send when you're back online.", Toast.LENGTH_LONG)
+                    try {
+                        app.ready.await()
+                        val store = CredStore(app)
+                        QueueStore(app).enqueueShare(url, title)
+                        when {
+                            store.token == null || store.needsLogin ->
+                                Notifier.toast(app, "Saved. Open Listen Later and sign in to send it.", Toast.LENGTH_LONG)
+                            !isOnline(app) ->
+                                Notifier.toast(app, "Saved. It'll send when you're back online.", Toast.LENGTH_LONG)
+                        }
+                        ShareWorker.enqueue(app, 0L)
+                    } catch (t: Throwable) {
+                        // Never crash the invisible share target; say it failed so the
+                        // share is not silently lost again.
+                        Notifier.toast(app, "Couldn't save that share. Try again?", Toast.LENGTH_LONG)
                     }
-                    ShareWorker.enqueue(app, 0L)
                 }
             }
         }
