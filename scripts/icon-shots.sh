@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Capture the launcher home screen and app drawer with the installed debug APK's icon.
 set -x
-APK=app/build/outputs/apk/debug/app-debug.apk
+APK=$(ls ListenLater-v*.apk | head -1)
 OUT=icon-shots
 mkdir -p $OUT
 adb shell wm size 1080x2400
