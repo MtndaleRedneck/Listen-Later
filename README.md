@@ -31,7 +31,7 @@ Setup, privacy (including what the update check sends), and screenshots are
 in [docs/details.md](docs/details.md).
 
 ## Individual Videos Feed cover art
-This is the cover picture for the PigeonPod feed that Listen Later sends your videos to. PigeonPod calls that feed "Individual Videos" unless you renamed it.
+This is a cover picture you can use for the PigeonPod feed that Listen Later sends your videos to. PigeonPod calls that feed "Individual Videos" unless you renamed it.
 
 [Download the cover art](https://mtndaleredneck.github.io/Listen-Later/podcast-cover-3000.png)
 
@@ -42,4 +42,4 @@ This is the cover picture for the PigeonPod feed that Listen Later sends your vi
 5. Under "Custom Cover", click "Upload Image" and choose the picture you saved.
 6. Click "Confirm".
 
-Your podcast app shows the new cover the next time it refreshes the feed. How long that takes depends on the app.
+Your podcast app shows the new cover the next time it refreshes the feed. Depending on the app is might be a few days. Pocket Casts takes nearly a week to register the change.
