@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/logo.png" alt="Listen Later icon" width="96"></p>
+<p align="center"><img src="docs/readme-icon.png" alt="Listen Later icon" width="96"></p>
 
 # Listen Later
 
