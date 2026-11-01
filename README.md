@@ -30,8 +30,8 @@ podcast app that can subscribe to an RSS feed.
 Setup, privacy (including what the update check sends), and screenshots are
 in [docs/details.md](docs/details.md).
 
-## Individual Videos Feed cover art
-This is a cover picture you can use for the PigeonPod feed that Listen Later sends your videos to. PigeonPod calls that feed "Individual Videos" unless you renamed it.
+## PigeonPod Feed cover art
+This is a cover picture you can use for the PigeonPod feed that Listen Later sends your videos to. PigeonPod calls that feed "Individual Videos" by default.
 
 [Download the cover art](https://mtndaleredneck.github.io/Listen-Later/podcast-cover-3000.png)
 
