@@ -33,5 +33,7 @@ in [docs/details.md](docs/details.md).
 ## Podcast cover art
 
 The 3000x3000 cover art for the podcast feed lives at
-[docs/podcast-cover-3000.png](docs/podcast-cover-3000.png) and is also
-attached to the latest release for anyone who wants to reuse it.
+[docs/podcast-cover-3000.png](docs/podcast-cover-3000.png) and is attached to
+every release. Download it from the [latest release](../../releases/latest)
+(asset `podcast-cover-3000.png`) or directly:
+https://github.com/MtndaleRedneck/Listen-Later/releases/latest/download/podcast-cover-3000.png
