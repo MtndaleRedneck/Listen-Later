@@ -1,3 +1,8 @@
+## What's new in 1.6.1
+
+- Fixed a crash that could close the app when a video was shared after the app had been sitting in the background.
+- The server address on the home screen is tappable and opens your server in the browser.
+
 ## What's new in 1.6.0
 
 - The list keeps refreshing itself while anything is downloading or waiting, not just for the first 10 seconds, and it updates when you come back to the app.

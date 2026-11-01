@@ -9,6 +9,9 @@ import kotlinx.coroutines.launch
 
 class ListenLaterApp : Application() {
 
+    /** App-level scope for work that must outlive a short-lived activity (the share sheet). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     /**
      * Completed once the one-time migration and the credential store are ready.
      * Everything that touches the queue or credentials - the opening screen, the
