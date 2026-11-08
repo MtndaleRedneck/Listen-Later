@@ -72,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           # Pinned cover-art hash: the review package names this value. Update it in the
           # same commit whenever docs/podcast-cover-3000.png changes.
-          EXPECTED_COVER_SHA256: ec1bc11f573136bd62f81ac61c8feacf8c521ca1da56b6e0ee324f4922fefe9e
+          EXPECTED_COVER_SHA256: 67a5ffa246860845f300326a594f39d780a03bf0bb545a1bff39fbf37c587b59
         run: |
           TAG=v$VERSION
           if gh release view "$TAG" >/dev/null 2>&1; then
