@@ -1,3 +1,7 @@
+## What's new in 1.6.2
+
+- Updated the app icon and logo with the new microphone design.
+
 ## What's new in 1.6.1
 
 - Fixed a crash when sharing a video to Listen Later. Videos shared in 1.6.0 weren't saved, so share them again.
