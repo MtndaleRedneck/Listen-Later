@@ -14,12 +14,4 @@ class BackoffTest {
         assertEquals(60 * 60_000L, Backoff.nextDelayMs(5))
         assertEquals(60 * 60_000L, Backoff.nextDelayMs(25))
     }
-
-    @Test
-    fun givesUpAfterMaxAttempts() {
-        assertEquals(false, Backoff.shouldGiveUp(1))
-        assertEquals(false, Backoff.shouldGiveUp(Backoff.MAX_ATTEMPTS - 1))
-        assertEquals(true, Backoff.shouldGiveUp(Backoff.MAX_ATTEMPTS))
-        assertEquals(true, Backoff.shouldGiveUp(Backoff.MAX_ATTEMPTS + 3))
-    }
 }

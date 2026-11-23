@@ -1,6 +1,6 @@
 ## What's new in 1.6.3
 
-- Security: the app no longer follows redirects when talking to your server, so your sign-in and session can never be forwarded to a different server.
+- Security: the app no longer follows redirects to a different server, so your sign-in and session can never be forwarded anywhere but your own server.
 
 ## What's new in 1.6.2
 

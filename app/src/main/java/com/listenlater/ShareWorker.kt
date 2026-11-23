@@ -63,6 +63,9 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             if (result.duplicate) duplicateOutcome(api, url) else ShareLogic.Outcome.SENT
         } catch (e: Api.SessionExpired) {
             ShareLogic.Outcome.SESSION_EXPIRED
+        } catch (e: Api.RedirectRefused) {
+            return parkForRefusal(queue, url, title, item.attempts,
+                "The server redirected to ${e.targetOrigin ?: "another address"}, which the app won't follow. Check your server address.")
         } catch (e: Api.UnexpectedResponse) {
             ShareLogic.Outcome.UNEXPECTED_RESPONSE
         } catch (e: Api.ApiError) {
