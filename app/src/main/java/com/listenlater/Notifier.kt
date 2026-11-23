@@ -12,12 +12,21 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
+/**
+ * Notification ids, pure and unit-tested. Ranges are disjoint by construction:
+ * skipped runs 1000..66535 (1000 + 16-bit url hash), redirect starts at 0x20000.
+ */
+internal object NoticeIds {
+    const val SIGNIN = 1
+    const val SKIPPED_BASE = 1000
+    const val REDIRECT_BASE = 0x20000 // skipped tops out at 1000 + 0xFFFF = 66535, well below this
+    fun skipped(url: String) = SKIPPED_BASE + (url.hashCode() and 0xFFFF)
+    fun redirect(url: String) = REDIRECT_BASE + (url.hashCode() and 0xFFFF)
+}
+
 object Notifier {
 
     private const val CHANNEL = "listenlater_alerts"
-    private const val ID_SIGNIN = 1
-    private const val ID_SKIPPED_BASE = 1000
-    private const val ID_REDIRECT_BASE = 0x10000 // past the whole skipped range (1000 + url-hash)
     const val EXTRA_URL = "com.listenlater.extra.URL"
 
     fun ensureChannel(context: Context) {
@@ -51,7 +60,7 @@ object Notifier {
     fun notifySignInOnce(context: Context, store: CredStore) {
         if (store.loginNotified) return
         store.loginNotified = true
-        post(context, ID_SIGNIN, "Sign in again to keep sending videos.")
+        post(context, NoticeIds.SIGNIN, "Sign in again to keep sending videos.")
     }
 
     /**
@@ -61,20 +70,20 @@ object Notifier {
      */
     fun redirectNotice(context: Context, url: String, title: String, origin: String?) {
         val what = if (title.isEmpty()) "A video" else "\"$title\""
-        post(context, ID_REDIRECT_BASE + (url.hashCode() and 0xFFFF),
+        post(context, NoticeIds.redirect(url),
             "$what: the server redirected to ${origin ?: "another address"}, which the app won't follow. It'll keep trying your saved address.")
     }
 
     fun clearRedirectNotice(context: Context, url: String) {
-        NotificationManagerCompat.from(context).cancel(ID_REDIRECT_BASE + (url.hashCode() and 0xFFFF))
+        NotificationManagerCompat.from(context).cancel(NoticeIds.redirect(url))
     }
 
     /** The sign-in ask is answered; clear it no matter how he got in. */
     fun clearSignIn(context: Context) {
-        NotificationManagerCompat.from(context).cancel(ID_SIGNIN)
+        NotificationManagerCompat.from(context).cancel(NoticeIds.SIGNIN)
     }
 
-    private fun skippedId(url: String) = ID_SKIPPED_BASE + (url.hashCode() and 0xFFFF)
+    private fun skippedId(url: String) = NoticeIds.skipped(url)
 
     /**
      * A video the server refused. Names the video and why, one notification per video;

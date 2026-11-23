@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -68,15 +69,16 @@ class MainActivity : ComponentActivity() {
                     val s = store
                     if (s != null) {
                         val stayStatus = BuildConfig.DEBUG && intent.getBooleanExtra("staystatus", false)
+                        val needsLogin by s.needsLoginFlow.collectAsState()
                         var screen by rememberSaveable {
                             mutableStateOf(
-                                if (s.token != null && (!s.needsLogin || stayStatus)) "status" else "signin"
+                                if (s.token != null && (!needsLogin || stayStatus)) "status" else "signin"
                             )
                         }
-                        // A restored "status" screen must not survive a session that
-                        // expired while the app was away.
-                        LaunchedEffect(s.needsLogin) {
-                            if (s.needsLogin && screen != "signin") screen = "signin"
+                        // Observable: the moment the worker marks the session expired, any
+                        // screen (including a restored "status") drops to sign-in.
+                        LaunchedEffect(needsLogin) {
+                            if (needsLogin && screen != "signin") screen = "signin"
                         }
                         if (screen == "signin") {
                             SignInScreen(store = s, onLoggedIn = {

@@ -45,9 +45,17 @@ class CredStore private constructor(private val appContext: Context, private val
         get() = prefs.getLong("loginAt", 0L)
         set(v) = prefs.edit().putLong("loginAt", v).apply()
 
+    private val _needsLogin = kotlinx.coroutines.flow.MutableStateFlow(prefs.getBoolean("needsLogin", false))
+
+    /** Observable session-expired flag: the open screen reacts the moment the worker sets it. */
+    val needsLoginFlow: kotlinx.coroutines.flow.StateFlow<Boolean> get() = _needsLogin
+
     var needsLogin: Boolean
         get() = prefs.getBoolean("needsLogin", false)
-        set(v) = prefs.edit().putBoolean("needsLogin", v).apply()
+        set(v) {
+            prefs.edit().putBoolean("needsLogin", v).apply()
+            _needsLogin.value = v
+        }
 
     var loginNotified: Boolean
         get() = prefs.getBoolean("loginNotified", false)
@@ -80,7 +88,12 @@ class CredStore private constructor(private val appContext: Context, private val
         val prevServer = this.server
         if (prevServer != null && (prevServer != server || this.username != username)) {
             e.remove("feedUrl")
-            QueueStore(appContext).clearAll()
+            // Posted notices belong to the old account: cancel them before the wipe, or one
+            // tap would open the new account with the old account's warning.
+            val q = QueueStore(appContext)
+            q.shareQueue().forEach { Notifier.clearRedirectNotice(appContext, it.url) }
+            q.skipped().forEach { Notifier.cancelSkipped(appContext, it.url); Notifier.clearRedirectNotice(appContext, it.url) }
+            q.clearAll()
         }
         e.putString("server", server)
             .putString("username", username)
@@ -92,6 +105,7 @@ class CredStore private constructor(private val appContext: Context, private val
             .putBoolean("rememberMe", remember)
         if (remember) e.putString("password", password) else e.remove("password")
         e.apply()
+        _needsLogin.value = false
     }
 
     /**
@@ -108,6 +122,7 @@ class CredStore private constructor(private val appContext: Context, private val
             .remove("loginAt")
             .putBoolean("signedOut", true)
             .apply()
+        _needsLogin.value = false
     }
 
     companion object {
@@ -145,8 +160,12 @@ class CredStore private constructor(private val appContext: Context, private val
             } catch (e: Exception) {
                 // fall through to the fresh start
             }
-            // A second failure means the stored data is unreadable anyway; starting fresh loses nothing more.
+            // Two failures: if the Keystore answers, the file itself is unreadable - a fresh
+            // start loses nothing more. If the Keystore is down, keep the file: it may read
+            // fine once the Keystore is back, and deleting it would lose a recoverable login.
             try {
+                val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
+                ks.load(null)
                 ctx.deleteSharedPreferences("creds")
                 return create(ctx)
             } catch (e: Exception) {
