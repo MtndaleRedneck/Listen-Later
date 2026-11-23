@@ -91,6 +91,17 @@ class QueueStore(context: Context) {
         }
     }
 
+    /** Same as [enqueueShare] but the write is committed synchronously (true = on disk or already
+     *  present). The share-sheet activity finishes the moment this returns, so the queue row must
+     *  be durable before it goes away; apply() would leave a process-kill window. */
+    fun enqueueShareDurable(url: String, title: String = ""): Boolean = synchronized(QueueStore::class.java) {
+        val q = shareQueue().toMutableList()
+        if (q.none { it.url == url }) {
+            q.add(Queued(url, title))
+            prefs.edit().putString("queue", serialize(q)).commit()
+        } else true
+    }
+
     fun removeFromQueue(url: String): Unit = synchronized(QueueStore::class.java) {
         val q = shareQueue().toMutableList()
         if (q.removeAll { it.url == url }) saveQueue(q)

@@ -81,6 +81,11 @@ adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez queuesta
 sleep 6
 adb shell input swipe 720 2000 720 900; sleep 1
 adb exec-out screencap -p > $OUT/v16-scrolled.png
+# v17: an expired session on a cold start lands on sign-in - the status screen is only
+# restored when needsLogin is clear, and the observable StateFlow keeps sign-in in place.
+# (The in-place drop mid-session is the same code path; captcha needs a live server and
+# cannot be exercised on the emulator.)
+shot v17-auth-expired-signin --ez demo true --ez needslogin true
 ls -la $OUT
 adb shell wm size reset
 adb shell wm density reset

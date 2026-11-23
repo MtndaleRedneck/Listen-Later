@@ -80,6 +80,13 @@ class MainActivity : ComponentActivity() {
                         LaunchedEffect(needsLogin) {
                             if (needsLogin && screen != "signin") screen = "signin"
                         }
+                        // A share whose process died between its durable queue write and the
+                        // worker kick is still on disk; nudge the queue once at startup.
+                        LaunchedEffect(Unit) {
+                            if (QueueStore(this@MainActivity).shareQueue().isNotEmpty()) {
+                                ShareWorker.enqueue(this@MainActivity, 0L)
+                            }
+                        }
                         if (screen == "signin") {
                             SignInScreen(store = s, onLoggedIn = {
                                 if (QueueStore(this@MainActivity).shareQueue().isNotEmpty()) {
