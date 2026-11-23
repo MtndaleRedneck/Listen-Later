@@ -91,8 +91,8 @@ class ApiTest {
     @Test
     fun sameOriginButPlainHttpIsRefused() {
         val server = MockWebServer()
+        server.start() // url() would auto-start it, and a later explicit start() would throw
         server.enqueue(MockResponse().setResponseCode(308).addHeader("Location", server.url("/landing")))
-        server.start()
         val api = Api(server.url("/").toString().trimEnd('/'), "SECRET")
         assertThrows(Api.RedirectRefused::class.java) { api.captchaEnabled() }
         assertEquals(1, server.requestCount) // only the first request, never the hop
