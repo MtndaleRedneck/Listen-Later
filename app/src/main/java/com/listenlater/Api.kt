@@ -1,9 +1,11 @@
 package com.listenlater
 
+import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -21,14 +23,21 @@ class Api(private val server: String, private val token: String?) {
     /** A reply that isn't a proper answer at all (an HTML page, a proxy error). */
     class UnexpectedResponse(val httpCode: Int) : java.io.IOException("Unexpected response ($httpCode)")
 
+    /**
+     * The server answered with a redirect this client won't follow. [targetOrigin] is the
+     * scheme and host only - never the path or query, which can carry secrets.
+     */
+    class RedirectRefused(val code: Int, val targetOrigin: String?) :
+        java.io.IOException("Redirect refused ($code -> ${targetOrigin ?: "no usable Location"})")
+
     data class ShareResult(val duplicate: Boolean)
 
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
-    // Never follow a redirect with this client. OkHttp forwards our custom pigeonpod
+    // OkHttp never follows redirects on its own here: it forwards our custom pigeonpod
     // header to any host a redirect points at, and on 307/308 it re-sends the body too -
-    // for login() that body is the password. The server answers its API directly, so a
-    // 3xx means something between us and the server replied; treat it as unexpected.
+    // for login() that body is the password. Redirects go through execute(), which honors
+    // only one exact same-origin hop (see redirectTargetAllowed).
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -60,10 +69,32 @@ class Api(private val server: String, private val token: String?) {
      * something between us and the app answering; only a real {code,msg} refusal
      * is treated as the server saying no.
      */
+    /**
+     * Sends the request, following at most one redirect and only to the exact same origin
+     * (scheme, host and port): a reverse proxy's trailing-slash or canonicalization redirect
+     * keeps working. A redirect anywhere else - another host, another port, plain http, or a
+     * second hop - is never followed, so the session header and request bodies (the login
+     * password) can only ever go to the configured server itself.
+     */
+    private fun execute(req: Request): Response {
+        var current = req
+        var followed = false
+        while (true) {
+            val res = client.newCall(current).execute()
+            if (res.code !in 300..399) return res
+            val code = res.code
+            val next = res.header("Location")?.let { current.url.resolve(it) }
+            res.close()
+            if (next == null) throw UnexpectedResponse(code)
+            if (!redirectTargetAllowed(current.url, next, followed)) throw RedirectRefused(code, originOf(next))
+            current = followRequest(current, code, next)
+            followed = true
+        }
+    }
+
     private fun call(req: Request): JSONObject {
-        client.newCall(req).execute().use { res ->
+        execute(req).use { res ->
             if (res.code == 401) throw SessionExpired()
-            if (res.code in 300..399) throw UnexpectedResponse(res.code)
             if (res.code >= 500) throw java.io.IOException("Server error ${res.code}")
             if (res.code == 408 || res.code == 429) throw java.io.IOException("Temporary (${res.code})")
             val body = res.body?.string().orEmpty()
@@ -110,9 +141,9 @@ class Api(private val server: String, private val token: String?) {
             .header("Accept-Language", "en")
             .post(payload.toString().toRequestBody(jsonType))
             .build()
-        client.newCall(req).execute().use { res ->
+        try {
+            execute(req).use { res ->
             if (res.code == 401) throw SessionExpired()
-            if (res.code in 300..399) throw UnexpectedResponse(res.code)
             if (res.code >= 500) throw java.io.IOException("Server error ${res.code}")
             val body = res.body?.string().orEmpty()
             val json = try {
@@ -126,6 +157,9 @@ class Api(private val server: String, private val token: String?) {
             val cookie = res.headers("Set-Cookie").firstOrNull { it.startsWith("pigeonpod=") }
                 ?: throw ApiError("No session returned")
             return cookie.substringAfter("pigeonpod=").substringBefore(";")
+            }
+        } catch (e: RedirectRefused) {
+            throw ApiError("The server tried to redirect the sign-in to ${e.targetOrigin ?: "another address"}. Check the server address.")
         }
     }
 
@@ -178,4 +212,25 @@ class Api(private val server: String, private val token: String?) {
         if (url.isEmpty()) throw ApiError("No feed link returned")
         return url
     }
+}
+
+/** The one redirect still honored: exact same origin (scheme, host and port), a single hop. */
+internal fun redirectTargetAllowed(from: HttpUrl, to: HttpUrl?, alreadyFollowed: Boolean): Boolean =
+    !alreadyFollowed && to != null && to.scheme == from.scheme && to.host == from.host && to.port == from.port && to.isHttps
+
+/**
+ * Builds the request for the one allowed same-origin hop with OkHttp's standard redirect
+ * semantics: 307/308 keep the method and body; 301/302/303 turn anything but GET/HEAD into
+ * a plain GET without a body.
+ */
+internal fun followRequest(req: Request, code: Int, url: HttpUrl): Request = when {
+    code == 307 || code == 308 || req.method == "GET" || req.method == "HEAD" -> req.newBuilder().url(url).build()
+    else -> req.newBuilder().url(url).get().build()
+}
+
+/** scheme://host(:port) only, so a redirect target's path or query never leaks into UI or logs. */
+private fun originOf(url: HttpUrl): String {
+    val default = if (url.isHttps) 443 else 80
+    val port = if (url.port != default) ":${url.port}" else ""
+    return "${url.scheme}://${url.host}$port"
 }
