@@ -128,6 +128,8 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
     var captchaId by remember { mutableStateOf<String?>(null) }
     var captchaImage by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var captchaOn by remember { mutableStateOf(false) }
+    // Sequence guard: a slower older fetch must never overwrite a newer one's result.
+    val captchaSeq = remember { longArrayOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
@@ -147,21 +149,33 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
 
     fun refreshCaptcha(serverUrl: String) {
         scope.launch {
+            val my = ++captchaSeq[0]
             try {
                 val api = Api(serverUrl, null)
                 val enabled = withContext(Dispatchers.IO) { api.captchaEnabled() }
+                if (my != captchaSeq[0]) return@launch
                 captchaOn = enabled
                 if (enabled) {
-                    val (id, imageData) = withContext(Dispatchers.IO) { api.captcha() }
-                    val bytes = Base64.decode(imageData.substringAfter("base64,"), Base64.DEFAULT)
+                    var id: String? = null
+                    var bmp: android.graphics.Bitmap? = null
+                    // An undecodable picture gets one immediate second try; without this a
+                    // broken image left the captcha required but invisible, trapping login.
+                    for (attempt in 1..2) {
+                        val (cid, imageData) = withContext(Dispatchers.IO) { api.captcha() }
+                        val bytes = Base64.decode(imageData.substringAfter("base64,"), Base64.DEFAULT)
+                        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (decoded != null) { id = cid; bmp = decoded; break }
+                    }
+                    if (my != captchaSeq[0]) return@launch
                     captchaId = id
-                    captchaImage = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    captchaImage = bmp
                     captchaCode = ""
                 } else {
                     captchaId = null
                     captchaImage = null
                 }
             } catch (e: Exception) {
+                if (my != captchaSeq[0]) return@launch
                 captchaOn = false
                 captchaId = null
                 captchaImage = null
@@ -188,7 +202,9 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
             normalized.length <= 8 -> error = "Enter your server address."
             username.isBlank() -> error = "Enter your username."
             password.isEmpty() -> error = "Enter your password."
-            captchaOn && captchaCode.isBlank() -> error = "Type the letters in the picture."
+            // Only block on the letters when a picture is actually showing; otherwise let
+            // the server answer, so a broken captcha image can never trap the sign-in.
+            captchaOn && captchaImage != null && captchaCode.isBlank() -> error = "Type the letters in the picture."
             else -> {
                 loading = true
                 error = null

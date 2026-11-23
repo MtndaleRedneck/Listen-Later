@@ -53,6 +53,11 @@ class CredStore private constructor(private val appContext: Context, private val
         get() = prefs.getBoolean("loginNotified", false)
         set(v) = prefs.edit().putBoolean("loginNotified", v).apply()
 
+    /** True after he chose Sign out: queued shares wait quietly, with no sign-in nag. */
+    var signedOut: Boolean
+        get() = prefs.getBoolean("signedOut", false)
+        set(v) = prefs.edit().putBoolean("signedOut", v).apply()
+
     /** On by default; the user's last choice sticks. Turning it off wipes the saved password. */
     var rememberMe: Boolean
         get() = prefs.getBoolean("rememberMe", true)
@@ -83,6 +88,7 @@ class CredStore private constructor(private val appContext: Context, private val
             .putLong("loginAt", System.currentTimeMillis())
             .putBoolean("needsLogin", false)
             .putBoolean("loginNotified", false)
+            .putBoolean("signedOut", false)
             .putBoolean("rememberMe", remember)
         if (remember) e.putString("password", password) else e.remove("password")
         e.apply()
@@ -100,6 +106,7 @@ class CredStore private constructor(private val appContext: Context, private val
             .remove("needsLogin")
             .remove("loginNotified")
             .remove("loginAt")
+            .putBoolean("signedOut", true)
             .apply()
     }
 
@@ -160,6 +167,9 @@ class CredStore private constructor(private val appContext: Context, private val
             val plain = QueueStore(app)
             if (plain.migrated) return
             val enc = shared(app)
+            // The Keystore-down fallback reads as empty; marking migration done from it
+            // would strand legacy data. Leave the marker for a launch that can really read.
+            if (enc is MemoryPrefs) return
             if (migrationSlowdownMs > 0) Thread.sleep(migrationSlowdownMs) // tests only; 0 in production
             // Reads first: a failure here writes nothing, and the next launch retries.
             val queue = enc.getString("queue", null)
@@ -187,7 +197,7 @@ class CredStore private constructor(private val appContext: Context, private val
  * writes live only until the process ends. The app behaves signed out and never crashes.
  */
 private class MemoryPrefs : SharedPreferences {
-    private val map = HashMap<String, Any?>()
+    private val map = java.util.Collections.synchronizedMap(HashMap<String, Any?>())
 
     override fun getAll(): Map<String, Any?> = map
     override fun getString(key: String?, defValue: String?): String? = map[key] as? String ?: defValue

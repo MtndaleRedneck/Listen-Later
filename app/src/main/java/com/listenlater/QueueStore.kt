@@ -33,7 +33,9 @@ class QueueStore(context: Context) {
         val title: String = "",
         val attempts: Int = 0,
         val nextRetryAt: Long = 0L,
-        val unexpectedSince: Long? = null
+        val unexpectedSince: Long? = null,
+        /** Set once its redirect notice was shown, so it is exactly once per video. */
+        val redirectNotified: Boolean = false
     )
 
     /** A video the server refused, kept so he can Try again. Clears itself after about a day. */
@@ -64,7 +66,8 @@ class QueueStore(context: Context) {
                         title = entry.optString("t", ""),
                         attempts = entry.optInt("a", 0),
                         nextRetryAt = entry.optLong("r", 0L),
-                        unexpectedSince = if (entry.has("x")) entry.optLong("x") else null
+                        unexpectedSince = if (entry.has("x")) entry.optLong("x") else null,
+                        redirectNotified = entry.optBoolean("rn", false)
                     )
                 } else {
                     // Older installs stored bare links.
@@ -145,7 +148,8 @@ class QueueStore(context: Context) {
                             title = entry.optString("t", ""),
                             attempts = entry.optInt("a", 0),
                             nextRetryAt = entry.optLong("r", 0L),
-                            unexpectedSince = if (entry.has("x")) entry.optLong("x") else null
+                            unexpectedSince = if (entry.has("x")) entry.optLong("x") else null,
+                            redirectNotified = entry.optBoolean("rn", false)
                         )
                     } else {
                         // Older installs stored bare links.
@@ -169,6 +173,7 @@ class QueueStore(context: Context) {
         list.forEach { q ->
             val o = JSONObject().put("u", q.url).put("t", q.title).put("a", q.attempts).put("r", q.nextRetryAt)
             if (q.unexpectedSince != null) o.put("x", q.unexpectedSince)
+            if (q.redirectNotified) o.put("rn", true)
             arr.put(o)
         }
         return arr.toString()
