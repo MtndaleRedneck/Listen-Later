@@ -92,8 +92,10 @@ class ShareWorkerTest {
     fun cancelledWhileBlockedMutatesNothing() = runBlocking {
         val server = MockWebServer()
         val gate = CountDownLatch(1)
+        val started = CountDownLatch(1)
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
+                started.countDown() // the network call really began before the cancel
                 gate.await() // hold the network call until the test lets it through
                 return MockResponse().setResponseCode(200)
                     .setBody("{\"code\":50010,\"msg\":\"Can't get this video\"}")
@@ -107,13 +109,13 @@ class ShareWorkerTest {
         // Default, like CoroutineWorker in production: the blocking network call must not
         // freeze the test's own event loop.
         val job = async(kotlinx.coroutines.Dispatchers.Default) { w.doWork() }
-        kotlinx.coroutines.delay(500) // let it reach the blocked network call
+        assertTrue("the request reached the server before the cancel", started.await(5, java.util.concurrent.TimeUnit.SECONDS))
         job.cancel()
         gate.countDown()
-        var threw = false
-        try { job.await() } catch (e: kotlinx.coroutines.CancellationException) { threw = true }
-        catch (e: Exception) { threw = true }
-        assertTrue("a cancelled run surfaces cancellation, not a fake success", threw)
+        var cancelled = false
+        try { job.await() } catch (e: kotlinx.coroutines.CancellationException) { cancelled = true }
+        assertTrue("a cancelled run surfaces CancellationException - any other outcome fails here", cancelled)
+        assertEquals("no second request slipped in while the cancel landed", 1, server.requestCount)
         val q = QueueStore(ctx).shareQueue()
         assertEquals("queue untouched by the cancelled run", 1, q.size)
         assertEquals(0, q[0].attempts)

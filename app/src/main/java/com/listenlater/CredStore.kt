@@ -148,33 +148,56 @@ class CredStore private constructor(private val appContext: Context, private val
         )
 
         private fun open(ctx: Context): SharedPreferences {
+            // A good open proves file and Keystore are both fine; forget earlier dead launches.
+            fun healthy(p: SharedPreferences): SharedPreferences {
+                ctx.getSharedPreferences("creds_health", Context.MODE_PRIVATE).edit().remove("dead_launches").apply()
+                return p
+            }
             // A first failure is usually a transient Keystore hiccup: wait a beat, try once more.
             try {
-                return create(ctx)
+                return healthy(create(ctx))
             } catch (e: Exception) {
                 // fall through to the retry
             }
             try {
                 Thread.sleep(300)
-                return create(ctx)
+                return healthy(create(ctx))
             } catch (e: Exception) {
-                // fall through to the fresh start
+                // fall through to the fallback
             }
-            // Two failures: if the Keystore answers, the file itself is unreadable - a fresh
-            // start loses nothing more. If the Keystore is down, keep the file: it may read
-            // fine once the Keystore is back, and deleting it would lose a recoverable login.
-            try {
+            // Two failures in this launch. Deleting the login file right now is not justified:
+            // a load-only Keystore probe cannot tell a dead file from a locked or struggling
+            // Keystore, and a wrong call loses a recoverable login. Only count a launch as
+            // dead when the Keystore itself answers; the third such launch in a row treats
+            // the file as unrecoverable and starts fresh. Until then the file stays untouched.
+            val keystoreUp = try {
                 val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
                 ks.load(null)
-                ctx.deleteSharedPreferences("creds")
-                return create(ctx)
+                true
             } catch (e: Exception) {
-                // The Keystore itself is down. Run signed out in memory, ask him to sign
-                // in, and never crash. Lasts until the process restarts and tries again.
-                val mem = CredStore(ctx, MemoryPrefs())
-                Notifier.notifySignInOnce(ctx, mem)
-                return mem.prefs
+                false
             }
+            if (keystoreUp) {
+                val health = ctx.getSharedPreferences("creds_health", Context.MODE_PRIVATE)
+                val dead = health.getInt("dead_launches", 0) + 1
+                health.edit().putInt("dead_launches", dead).apply()
+                if (dead >= 3) {
+                    // The same failure three launches running with a healthy Keystore: the
+                    // file is not coming back. A fresh file lets the next sign-in save again.
+                    runCatching { ctx.deleteSharedPreferences("creds") }
+                    try {
+                        return healthy(create(ctx))
+                    } catch (e: Exception) {
+                        // Even a fresh file cannot be written right now; fall through to memory.
+                    }
+                }
+            }
+            // The Keystore is down, or the file has failed fewer than three launches running:
+            // run signed out in memory, ask him to sign in, and never crash. Lasts until the
+            // process restarts and tries again.
+            val mem = CredStore(ctx, MemoryPrefs())
+            Notifier.notifySignInOnce(ctx, mem)
+            return mem.prefs
         }
 
         /**

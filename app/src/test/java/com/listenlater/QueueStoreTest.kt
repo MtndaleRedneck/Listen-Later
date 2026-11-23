@@ -58,4 +58,14 @@ class QueueStoreTest {
             listOf("https://youtu.be/two", "https://youtu.be/three", "https://youtu.be/one"),
             QueueStore(ctx).shareQueue().map { it.url })
     }
+
+    @Test
+    fun durableEnqueueCommitsBeforeTheCallerLeaves() {
+        // The share-sheet activity finishes right after this call: commit() (not apply()) is
+        // what guarantees the write already left the async queue. A fresh instance reads the
+        // row back; the emulator share-smoke script proves the same against the file on disk.
+        assertTrue(QueueStore(ctx).enqueueShareDurable("https://youtu.be/x", "X"))
+        assertEquals(listOf("https://youtu.be/x"), QueueStore(ctx).shareQueue().map { it.url })
+        assertTrue("already queued is fine too", QueueStore(ctx).enqueueShareDurable("https://youtu.be/x", "X"))
+    }
 }
