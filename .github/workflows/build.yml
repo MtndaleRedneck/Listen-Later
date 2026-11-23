@@ -36,8 +36,15 @@ jobs:
             exit 1
           fi
 
+      # Robolectric downloads its android-all runtime to ~/.m2 outside Gradle's cache; keep
+      # it across runs, and retry the test task once - Maven Central 429s are a known flake.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ hashFiles('**/build.gradle.kts') }}
+
       - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: ./gradlew --no-daemon testDebugUnitTest || ./gradlew --no-daemon testDebugUnitTest
 
       - name: Build APKs
         env:
