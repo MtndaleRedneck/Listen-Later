@@ -13,8 +13,8 @@ android {
         minSdk = 31
         targetSdk = 34
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 11
-        versionName = "1.6.2"
+        versionCode = 12
+        versionName = "1.6.3"
     }
 
     // Release signing key is private and never committed. CI passes it in through environment
@@ -64,6 +64,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
 }

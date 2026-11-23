@@ -25,10 +25,16 @@ class Api(private val server: String, private val token: String?) {
 
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
+    // Never follow a redirect with this client. OkHttp forwards our custom pigeonpod
+    // header to any host a redirect points at, and on 307/308 it re-sends the body too -
+    // for login() that body is the password. The server answers its API directly, so a
+    // 3xx means something between us and the server replied; treat it as unexpected.
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     private fun base() = server.trimEnd('/')
@@ -57,6 +63,7 @@ class Api(private val server: String, private val token: String?) {
     private fun call(req: Request): JSONObject {
         client.newCall(req).execute().use { res ->
             if (res.code == 401) throw SessionExpired()
+            if (res.code in 300..399) throw UnexpectedResponse(res.code)
             if (res.code >= 500) throw java.io.IOException("Server error ${res.code}")
             if (res.code == 408 || res.code == 429) throw java.io.IOException("Temporary (${res.code})")
             val body = res.body?.string().orEmpty()
@@ -105,6 +112,7 @@ class Api(private val server: String, private val token: String?) {
             .build()
         client.newCall(req).execute().use { res ->
             if (res.code == 401) throw SessionExpired()
+            if (res.code in 300..399) throw UnexpectedResponse(res.code)
             if (res.code >= 500) throw java.io.IOException("Server error ${res.code}")
             val body = res.body?.string().orEmpty()
             val json = try {

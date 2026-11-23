@@ -1,3 +1,7 @@
+## What's new in 1.6.3
+
+- Security: the app no longer follows redirects when talking to your server, so your sign-in and session can never be forwarded to a different server.
+
 ## What's new in 1.6.2
 
 - Updated the app icon and logo with the new microphone design.
