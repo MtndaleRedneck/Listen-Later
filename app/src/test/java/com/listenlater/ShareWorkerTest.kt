@@ -112,6 +112,7 @@ class ShareWorkerTest {
         assertTrue("the request reached the server before the cancel", started.await(5, java.util.concurrent.TimeUnit.SECONDS))
         job.cancel()
         gate.countDown()
+        job.join() // the body has really wound down before any state is judged
         var cancelled = false
         try { job.await() } catch (e: kotlinx.coroutines.CancellationException) { cancelled = true }
         assertTrue("a cancelled run surfaces CancellationException - any other outcome fails here", cancelled)
