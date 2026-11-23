@@ -21,9 +21,14 @@ import androidx.security.crypto.MasterKey
  * they live in [QueueStore] (plain preferences) - a storage wipe then costs a
  * sign-in, never the queue.
  */
-class CredStore private constructor(private val appContext: Context, private val prefs: SharedPreferences) {
+class CredStore private constructor(private val appContext: Context, initialStore: SharedPreferences) {
 
     constructor(context: Context) : this(context.applicationContext, shared(context.applicationContext))
+
+    // Always the CURRENT shared store: when a sign-in recovers the on-disk file, every live
+    // CredStore - this one included - switches to it, so no later sign-out or token write can
+    // land in a dead in-memory store while the file has the newer snapshot.
+    private val prefs: SharedPreferences get() = shared(appContext)
 
     var server: String?
         get() = prefs.getString("server", null)
@@ -108,12 +113,13 @@ class CredStore private constructor(private val appContext: Context, private val
         _needsLogin.value = false
         if (prefs is MemoryPrefs) {
             // The saved file could not be read at launch and was left untouched. Fresh
-            // credentials are in hand now, so replacing the unreadable file loses nothing:
-            // recreate it and write the new login to disk. If even that fails, this
-            // session stays in memory and the next launch tries again.
+            // credentials are in hand now, so replacing the unreadable file loses nothing.
+            // Staged: the new file is written and verified under a temp name FIRST, and the
+            // old file is deleted only once the replacement is complete on disk.
             try {
-                appContext.deleteSharedPreferences("creds")
-                val fresh = create(appContext).edit()
+                val staging = "creds_staging"
+                appContext.deleteSharedPreferences(staging)
+                val staged = create(appContext, staging).edit()
                     .putString("server", server)
                     .putString("username", username)
                     .putString("token", token)
@@ -122,8 +128,12 @@ class CredStore private constructor(private val appContext: Context, private val
                     .putBoolean("loginNotified", false)
                     .putBoolean("signedOut", false)
                     .putBoolean("rememberMe", remember)
-                if (remember) fresh.putString("password", password)
-                fresh.apply()
+                if (remember) staged.putString("password", password)
+                check(staged.commit()) { "staged write did not land" }
+                val dir = java.io.File(appContext.applicationInfo.dataDir, "shared_prefs")
+                appContext.deleteSharedPreferences("creds")
+                check(java.io.File(dir, "$staging.xml").renameTo(java.io.File(dir, "creds.xml"))) { "staged file did not move into place" }
+                instance = create(appContext) // every live CredStore follows this store now
             } catch (e: Exception) {
                 // Stay memory-only for this process; nothing is deleted and nothing crashes.
             }
@@ -153,6 +163,9 @@ class CredStore private constructor(private val appContext: Context, private val
         private fun shared(ctx: Context): SharedPreferences =
             instance ?: synchronized(this) { instance ?: open(ctx).also { instance = it } }
 
+        /** Test hook: drop the cached store so the next access reopens from disk. */
+        internal fun resetForTests() = synchronized(this) { instance = null }
+
         /** Build the shared instance off the main thread during startup. */
         fun warm(ctx: Context) {
             shared(ctx.applicationContext)
@@ -161,9 +174,9 @@ class CredStore private constructor(private val appContext: Context, private val
         /** Test hook: slow the one-time migration so a mid-migration reader can be exercised. */
         @Volatile var migrationSlowdownMs: Long = 0L
 
-        private fun create(ctx: Context): SharedPreferences = EncryptedSharedPreferences.create(
+        private fun create(ctx: Context, name: String = "creds"): SharedPreferences = EncryptedSharedPreferences.create(
             ctx,
-            "creds",
+            name,
             MasterKey.Builder(ctx).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
