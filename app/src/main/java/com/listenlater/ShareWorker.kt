@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
@@ -42,16 +43,30 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         val q = queue.shareQueue()
         if (q.isEmpty()) return Result.success()
 
+        // Run the first item whose retry time has come; if every item is still backing
+        // off, wake when the earliest one is due instead of retrying something early or
+        // holding fresh shares behind another link's backoff.
+        val now = System.currentTimeMillis()
+        val dueIndex = ShareLogic.firstDueIndex(q.map { it.nextRetryAt }, now)
+        if (dueIndex < 0) {
+            enqueue(applicationContext, ShareLogic.nextWakeDelayMs(q.map { it.nextRetryAt }, now))
+            return Result.success()
+        }
+
         val token = store.token
         val server = store.server
         if (token.isNullOrEmpty() || server.isNullOrEmpty()) {
-            store.needsLogin = true
-            Notifier.notifySignInOnce(applicationContext, store)
+            // A deliberate sign-out holds the queue quietly; only an expired or missing
+            // session asks him to sign in again (once).
+            if (!store.signedOut) {
+                store.needsLogin = true
+                Notifier.notifySignInOnce(applicationContext, store)
+            }
             return Result.success()
         }
 
         val api = Api(server, token)
-        val item = q.first()
+        val item = q[dueIndex]
         val url = item.url
         var title = item.title
 
@@ -67,8 +82,12 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             ShareLogic.Outcome.SESSION_EXPIRED
         } catch (e: Api.RedirectRefused) {
             // Never parked: the share keeps its hourly retry on the saved address (a swept
-            // parked row would silently lose it). One accurate notification per video.
-            if (item.unexpectedSince == null) Notifier.redirectNotice(applicationContext, url, title, e.targetOrigin)
+            // parked row would silently lose it). One accurate notification per video,
+            // tracked on the queue entry itself so an earlier hiccup can't suppress it.
+            if (!item.redirectNotified) {
+                Notifier.redirectNotice(applicationContext, url, title, e.targetOrigin)
+                queue.updateQueued(url) { it.copy(redirectNotified = true) }
+            }
             ShareLogic.Outcome.REDIRECT_REFUSED
         } catch (e: Api.UnexpectedResponse) {
             ShareLogic.Outcome.UNEXPECTED_RESPONSE
@@ -78,6 +97,9 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             ShareLogic.Outcome.NETWORK_FAILURE
         }
 
+        // A REPLACE-enqueued newer run already owns the queue from here on: if this run was
+        // cancelled while blocked on the network, stop before mutating or re-enqueuing.
+        coroutineContext.ensureActive()
         val d = ShareLogic.decide(outcome, item.attempts, title)
         d.toast?.let { Notifier.toast(applicationContext, it) }
         when (d.action) {
@@ -93,6 +115,7 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                 queue.removeFromQueue(url)
                 val reason = d.parkReason ?: "The server said it can't get this video."
                 queue.addSkipped(url, title, reason)
+                Notifier.clearRedirectNotice(applicationContext, url)
                 Notifier.skipped(applicationContext, url, title, reason)
                 if (queue.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
             }
@@ -109,23 +132,26 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                     )
                 }
                 if (d.moveToBack) queue.moveToBack(url)
-                enqueue(applicationContext, d.retryDelayMs)
+                enqueue(applicationContext, ShareLogic.nextWakeDelayMs(
+                    queue.shareQueue().map { it.nextRetryAt }, System.currentTimeMillis()))
             }
         }
         return Result.success()
     }
 
     /** A refusal gets one quick retry in case YouTube was briefly limited, then it's parked. */
-    private fun parkForRefusal(
+    private suspend fun parkForRefusal(
         queue: QueueStore, url: String, title: String, attempts: Int, serverReason: String?
     ): Result {
+        coroutineContext.ensureActive()
         val d = ShareLogic.decide(ShareLogic.Outcome.REFUSAL, attempts, title)
         return if (d.action == ShareLogic.Action.RETRY) {
             queue.updateQueued(url) {
                 it.copy(attempts = it.attempts + 1, nextRetryAt = System.currentTimeMillis() + d.retryDelayMs)
             }
             queue.moveToBack(url)
-            enqueue(applicationContext, d.retryDelayMs)
+            enqueue(applicationContext, ShareLogic.nextWakeDelayMs(
+                queue.shareQueue().map { it.nextRetryAt }, System.currentTimeMillis()))
             Result.success()
         } else {
             queue.removeFromQueue(url)
@@ -149,7 +175,9 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         } catch (e: Api.SessionExpired) {
             throw e
         } catch (e: Exception) {
-            return ShareLogic.Outcome.DUPLICATE_UNRESOLVED
+            // A network glitch mid-lookup is weather, not "can't find it": keep retrying.
+            // Parking here would park a share the server really has - and the sweep would lose it.
+            return ShareLogic.Outcome.UNEXPECTED_RESPONSE
         }
         return when (status) {
             "READY" -> {

@@ -33,6 +33,20 @@ object ShareLogic {
         val moveToBack: Boolean = false
     )
 
+    /**
+     * Which queued item runs next: the first one whose retry time has come (a fresh share
+     * has nextRetryAt 0, so it is always due). -1 when everything is still backing off.
+     * Backed-off items are never retried early just because a new share woke the worker.
+     */
+    fun firstDueIndex(nextRetryAts: List<Long>, now: Long): Int = nextRetryAts.indexOfFirst { it <= now }
+
+    /**
+     * When the worker should wake next: the soonest retry time in the queue, as a delay
+     * from now (0 when something is due). A failed item's own backoff never delays the rest.
+     */
+    fun nextWakeDelayMs(nextRetryAts: List<Long>, now: Long): Long =
+        (nextRetryAts.minOrNull()?.minus(now))?.coerceAtLeast(0L) ?: 0L
+
     /** One quick retry for a refusal, in case YouTube was briefly limited. */
     const val REFUSAL_MAX_TRIES = 2
     const val REFUSAL_RETRY_MS = 60_000L

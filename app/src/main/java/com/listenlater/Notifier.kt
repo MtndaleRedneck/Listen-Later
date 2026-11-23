@@ -17,7 +17,7 @@ object Notifier {
     private const val CHANNEL = "listenlater_alerts"
     private const val ID_SIGNIN = 1
     private const val ID_SKIPPED_BASE = 1000
-    private const val ID_REDIRECT_BASE = 2000
+    private const val ID_REDIRECT_BASE = 0x10000 // past the whole skipped range (1000 + url-hash)
     const val EXTRA_URL = "com.listenlater.extra.URL"
 
     fun ensureChannel(context: Context) {
@@ -31,7 +31,7 @@ object Notifier {
         ensureChannel(context)
         val pi = PendingIntent.getActivity(
             context, id,
-            Intent(context, MainActivity::class.java),
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val n = NotificationCompat.Builder(context, CHANNEL)

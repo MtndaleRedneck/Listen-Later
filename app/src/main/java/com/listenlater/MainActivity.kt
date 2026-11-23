@@ -73,6 +73,11 @@ class MainActivity : ComponentActivity() {
                                 if (s.token != null && (!s.needsLogin || stayStatus)) "status" else "signin"
                             )
                         }
+                        // A restored "status" screen must not survive a session that
+                        // expired while the app was away.
+                        LaunchedEffect(s.needsLogin) {
+                            if (s.needsLogin && screen != "signin") screen = "signin"
+                        }
                         if (screen == "signin") {
                             SignInScreen(store = s, onLoggedIn = {
                                 if (QueueStore(this@MainActivity).shareQueue().isNotEmpty()) {

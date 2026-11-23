@@ -116,4 +116,16 @@ class ShareLogicTest {
             assertNull(d.parkReason)
         }
     }
+
+    @Test
+    fun dueSelectionAndNextWake() {
+        // Fresh shares (0) are always due; a backed-off item is never run early, and a
+        // failed item's own backoff never delays the rest of the queue.
+        assertEquals(1, ShareLogic.firstDueIndex(listOf(10_000L, 0L), 5_000L))
+        assertEquals(-1, ShareLogic.firstDueIndex(listOf(10_000L, 20_000L), 5_000L))
+        assertEquals(0, ShareLogic.firstDueIndex(listOf(4_000L), 5_000L))
+        assertEquals(5_000L, ShareLogic.nextWakeDelayMs(listOf(10_000L, 20_000L), 5_000L))
+        assertEquals(0L, ShareLogic.nextWakeDelayMs(listOf(0L, 60_000L), 5_000L))
+        assertEquals(0L, ShareLogic.nextWakeDelayMs(emptyList(), 5_000L))
+    }
 }
