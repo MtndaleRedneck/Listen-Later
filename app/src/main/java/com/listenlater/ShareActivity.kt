@@ -14,10 +14,9 @@ import kotlinx.coroutines.launch
  * URL (with the share's subject line as its title when the source app provides
  * one), kicks the worker, and closes. Online and signed in, the worker's toast is
  * the confirmation; offline or signed out, one toast says the share is saved.
- * The queue row is written durably (synchronous commit, off the main thread) before the
- * window closes, so a process kill between the share sheet and the worker can never drop
- * the share; the startup migration merges existing rows, so the plain store is safe to
- * touch before it finishes.
+ * The queue row is committed to disk synchronously before the window closes, so a
+ * process kill between the share sheet and the worker can never drop the share; the
+ * startup migration merges existing rows, so the plain store is safe to touch first.
  */
 class ShareActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,22 +35,26 @@ class ShareActivity : Activity() {
             }
             else -> {
                 val app = application as ListenLaterApp
-                // Durable first, gone second: the queue row is committed to disk (the app
-                // scope runs off the main thread) before the worker kick and finish(). A
-                // process kill can now only lose a share before the write - where the user
-                // still sees the sheet - never after it.
-                app.appScope.launch {
-                    try {
-                        QueueStore(app).enqueueShareDurable(url, title)
-                        ShareWorker.enqueue(app, 0L)
-                    } catch (t: Throwable) {
-                        // Never crash the invisible share target; say it failed so the
-                        // share is not silently lost again.
-                        Notifier.toast(app, "Couldn't save that share. Try again?", Toast.LENGTH_LONG)
-                    }
-                    finish()
+                // Durable before gone: one small synchronous commit, here, before finish().
+                // A NoDisplay window must not linger for async I/O (it has to finish before
+                // its resume completes), and finishing before a durable write would leave a
+                // process-kill window. The commit is a single tiny SharedPreferences write -
+                // milliseconds at worst - and its result is honored: a failed commit says so
+                // instead of pretending the share was saved.
+                val saved = try {
+                    QueueStore(app).enqueueShareDurable(url, title)
+                } catch (t: Throwable) {
+                    false
                 }
-                // The explanatory toast can wait for startup migration; the write cannot.
+                if (!saved) {
+                    Toast.makeText(this, "Couldn't save that share. Try again?", Toast.LENGTH_LONG).show()
+                    finish()
+                    return
+                }
+                // On disk now: the worker kick and closing are safe, in either order.
+                ShareWorker.enqueue(app, 0L)
+                finish()
+                // The explanatory toast can wait for startup migration; the write could not.
                 app.appScope.launch {
                     try {
                         app.ready.await()

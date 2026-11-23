@@ -106,6 +106,28 @@ class CredStore private constructor(private val appContext: Context, private val
         if (remember) e.putString("password", password) else e.remove("password")
         e.apply()
         _needsLogin.value = false
+        if (prefs is MemoryPrefs) {
+            // The saved file could not be read at launch and was left untouched. Fresh
+            // credentials are in hand now, so replacing the unreadable file loses nothing:
+            // recreate it and write the new login to disk. If even that fails, this
+            // session stays in memory and the next launch tries again.
+            try {
+                appContext.deleteSharedPreferences("creds")
+                val fresh = create(appContext).edit()
+                    .putString("server", server)
+                    .putString("username", username)
+                    .putString("token", token)
+                    .putLong("loginAt", System.currentTimeMillis())
+                    .putBoolean("needsLogin", false)
+                    .putBoolean("loginNotified", false)
+                    .putBoolean("signedOut", false)
+                    .putBoolean("rememberMe", remember)
+                if (remember) fresh.putString("password", password)
+                fresh.apply()
+            } catch (e: Exception) {
+                // Stay memory-only for this process; nothing is deleted and nothing crashes.
+            }
+        }
     }
 
     /**
@@ -148,53 +170,24 @@ class CredStore private constructor(private val appContext: Context, private val
         )
 
         private fun open(ctx: Context): SharedPreferences {
-            // A good open proves file and Keystore are both fine; forget earlier dead launches.
-            fun healthy(p: SharedPreferences): SharedPreferences {
-                ctx.getSharedPreferences("creds_health", Context.MODE_PRIVATE).edit().remove("dead_launches").apply()
-                return p
-            }
             // A first failure is usually a transient Keystore hiccup: wait a beat, try once more.
             try {
-                return healthy(create(ctx))
+                return create(ctx)
             } catch (e: Exception) {
                 // fall through to the retry
             }
             try {
                 Thread.sleep(300)
-                return healthy(create(ctx))
+                return create(ctx)
             } catch (e: Exception) {
                 // fall through to the fallback
             }
-            // Two failures in this launch. Deleting the login file right now is not justified:
-            // a load-only Keystore probe cannot tell a dead file from a locked or struggling
-            // Keystore, and a wrong call loses a recoverable login. Only count a launch as
-            // dead when the Keystore itself answers; the third such launch in a row treats
-            // the file as unrecoverable and starts fresh. Until then the file stays untouched.
-            val keystoreUp = try {
-                val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
-                ks.load(null)
-                true
-            } catch (e: Exception) {
-                false
-            }
-            if (keystoreUp) {
-                val health = ctx.getSharedPreferences("creds_health", Context.MODE_PRIVATE)
-                val dead = health.getInt("dead_launches", 0) + 1
-                health.edit().putInt("dead_launches", dead).apply()
-                if (dead >= 3) {
-                    // The same failure three launches running with a healthy Keystore: the
-                    // file is not coming back. A fresh file lets the next sign-in save again.
-                    runCatching { ctx.deleteSharedPreferences("creds") }
-                    try {
-                        return healthy(create(ctx))
-                    } catch (e: Exception) {
-                        // Even a fresh file cannot be written right now; fall through to memory.
-                    }
-                }
-            }
-            // The Keystore is down, or the file has failed fewer than three launches running:
-            // run signed out in memory, ask him to sign in, and never crash. Lasts until the
-            // process restarts and tries again.
+            // Two failures in this launch. The file is PRESERVED, always: neither a retry
+            // count nor a load-only Keystore probe can prove a login file unrecoverable
+            // (locked Keystore, struggling Keystore, transient decryption fault), and a
+            // wrong call would delete a login that reads fine later. Run signed out in
+            // memory, ask him to sign in, and never crash. If he does sign in, THAT is the
+            // moment replacing the file loses nothing - see markLoggedIn.
             val mem = CredStore(ctx, MemoryPrefs())
             Notifier.notifySignInOnce(ctx, mem)
             return mem.prefs
