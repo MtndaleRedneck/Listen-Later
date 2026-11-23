@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * own feed object back unchanged, so website settings are preserved on
  * every share and new feeds come from the site's feed defaults.
  */
-class Api(private val server: String, private val token: String?) {
+class Api(private val server: String, private val token: String?, testClient: OkHttpClient? = null) {
 
     class SessionExpired : Exception()
     class ApiError(message: String) : Exception(message)
@@ -38,7 +38,7 @@ class Api(private val server: String, private val token: String?) {
     // header to any host a redirect points at, and on 307/308 it re-sends the body too -
     // for login() that body is the password. Redirects go through execute(), which honors
     // only one exact same-origin hop (see redirectTargetAllowed).
-    private val client = OkHttpClient.Builder()
+    private val client = testClient ?: OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)

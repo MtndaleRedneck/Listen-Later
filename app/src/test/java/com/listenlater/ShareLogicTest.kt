@@ -103,4 +103,17 @@ class ShareLogicTest {
         assertNull(again.toast)
         assertFalse(again.markUnexpected)
     }
+
+    @Test
+    fun redirectRefusalRetriesForeverAndNeverParks() {
+        // The share stays in the queue (no PARK, no "Couldn't get it" row that the
+        // StatusScreen sweep would erase after about a day) and keeps the hourly retry.
+        for (attempts in listOf(0, 1, 25)) {
+            val d = ShareLogic.decide(ShareLogic.Outcome.REDIRECT_REFUSED, attempts, "a video")
+            assertEquals(ShareLogic.Action.RETRY, d.action)
+            assertTrue(d.markUnexpected)
+            assertTrue(d.moveToBack)
+            assertNull(d.parkReason)
+        }
+    }
 }

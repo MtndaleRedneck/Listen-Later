@@ -18,6 +18,7 @@ object ShareLogic {
         REFUSAL,                 // the server gave a reason (private, deleted, ...)
         SESSION_EXPIRED,         // sign-in missing or expired, however the server worded it
         UNEXPECTED_RESPONSE,     // a reply that isn't a proper answer at all
+        REDIRECT_REFUSED,        // the server tried to send the call somewhere we won't follow
         NETWORK_FAILURE          // no signal, timeout, server down
     }
 
@@ -56,7 +57,10 @@ object ShareLogic {
                 Decision(Action.PARK)
             }
         Outcome.SESSION_EXPIRED -> Decision(Action.SIGN_IN)
-        Outcome.UNEXPECTED_RESPONSE -> Decision(
+        // A refused redirect is treated exactly like an unanswerable reply: quiet retry on
+        // the saved address with no limit, never parked - a parked row is swept after about
+        // a day and the share would be lost. The worker adds one notification per video.
+        Outcome.UNEXPECTED_RESPONSE, Outcome.REDIRECT_REFUSED -> Decision(
             Action.RETRY,
             retryDelayMs = Backoff.nextDelayMs(attempts + 1),
             markUnexpected = true,
