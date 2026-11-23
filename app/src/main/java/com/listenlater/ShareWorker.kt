@@ -157,6 +157,7 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             queue.removeFromQueue(url)
             val reason = serverReason ?: "The server said it can't get this video."
             queue.addSkipped(url, title, reason)
+            Notifier.clearRedirectNotice(applicationContext, url) // no stale redirect note next to the skipped one
             Notifier.skipped(applicationContext, url, title, reason)
             if (queue.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
             Result.success()
