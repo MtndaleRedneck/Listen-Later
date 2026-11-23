@@ -3,8 +3,12 @@ package com.listenlater
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.tls.HandshakeCertificates
+import okhttp3.tls.HeldCertificate
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -169,5 +173,89 @@ class ApiTest {
         }
         val get = okhttp3.Request.Builder().url("https://server.example/api").build()
         assertEquals("GET", followRequest(get, 302, url).method)
+    }
+
+    /** A MockWebServer with real TLS (self-signed localhost cert) and an Api whose client trusts it. */
+    private fun tlsPair(): Pair<MockWebServer, (String) -> Api> {
+        val cert = HeldCertificate.Builder()
+            .commonName("localhost")
+            .addSubjectAlternativeName("localhost")
+            .build()
+        val server = MockWebServer()
+        server.useHttps(HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory(), false)
+        server.start()
+        val trust = HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate).build()
+        val client = OkHttpClient.Builder()
+            .sslSocketFactory(trust.sslSocketFactory, trust.trustManager)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .writeTimeout(5, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+        return server to { path -> Api(server.url(path).toString().trimEnd('/'), "SECRET", client) }
+    }
+
+    @Test
+    fun sameOriginRedirectIsFollowedOverRealTls() {
+        val (server, apiFactory) = tlsPair()
+        server.enqueue(MockResponse().setResponseCode(302)
+            .addHeader("Location", server.url("/api/auth/captcha-config")))
+        server.enqueue(MockResponse().setBody(ok("true")))
+        val api = apiFactory("/")
+        assertTrue("one exact same-origin hop keeps working", api.captchaEnabled())
+        server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals("/api/auth/captcha-config", second.path)
+        assertEquals("the session header only ever went to the same origin", "SECRET", second.getHeader("pigeonpod"))
+        server.shutdown()
+    }
+
+    @Test
+    fun sameOrigin307KeepsPostAndBodyOverTls() {
+        val (server, apiFactory) = tlsPair()
+        server.enqueue(MockResponse().setResponseCode(307)
+            .addHeader("Location", server.url("/api/auth/login")))
+        server.enqueue(MockResponse()
+            .addHeader("Set-Cookie", "pigeonpod=tok123; Path=/")
+            .setBody(ok("\"\"")))
+        val api = apiFactory("/")
+        assertEquals("tok123", api.login("ezzy", "the-password", null, null))
+        server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals("307 keeps the method", "POST", second.method)
+        assertTrue("307 keeps the body, only to the same origin",
+            second.body.readUtf8().contains("the-password"))
+        server.shutdown()
+    }
+
+    @Test
+    fun sameOrigin302TurnsPostIntoGetAndLoginFailsClean() {
+        val (server, apiFactory) = tlsPair()
+        server.enqueue(MockResponse().setResponseCode(302)
+            .addHeader("Location", server.url("/api/auth/login")))
+        // Standard redirect semantics turn the POST into a bodyless GET, so a semantic
+        // login cannot complete through it: the defined outcome is a clean worded failure,
+        // never a leaked password.
+        server.enqueue(MockResponse().setBody(ok("\"\"")))
+        val api = apiFactory("/")
+        val e = assertThrows(Api.ApiError::class.java) { api.login("ezzy", "the-password", null, null) }
+        server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals("302 turns the POST into a GET", "GET", second.method)
+        assertEquals("the password body does not go out again", 0L, second.bodySize)
+        assertTrue(e.message!!.isNotEmpty())
+        server.shutdown()
+    }
+
+    @Test
+    fun crossHostRedirectIsRefusedOverRealTlsToo() {
+        val (server, apiFactory) = tlsPair()
+        server.enqueue(MockResponse().setResponseCode(308)
+            .addHeader("Location", "https://other.example/landing"))
+        val api = apiFactory("/")
+        val e = assertThrows(Api.RedirectRefused::class.java) { api.captchaEnabled() }
+        assertEquals("https://other.example", e.targetOrigin)
+        server.shutdown()
     }
 }

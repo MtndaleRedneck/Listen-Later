@@ -17,6 +17,7 @@ object Notifier {
     private const val CHANNEL = "listenlater_alerts"
     private const val ID_SIGNIN = 1
     private const val ID_SKIPPED_BASE = 1000
+    private const val ID_REDIRECT_BASE = 2000
     const val EXTRA_URL = "com.listenlater.extra.URL"
 
     fun ensureChannel(context: Context) {
@@ -51,6 +52,21 @@ object Notifier {
         if (store.loginNotified) return
         store.loginNotified = true
         post(context, ID_SIGNIN, "Sign in again to keep sending videos.")
+    }
+
+    /**
+     * The server tried to send a share somewhere the app won't follow. Posted once per
+     * video (the worker only calls it for the first redirect); the share stays queued and
+     * keeps retrying the saved address, so nothing is parked or swept.
+     */
+    fun redirectNotice(context: Context, url: String, title: String, origin: String?) {
+        val what = if (title.isEmpty()) "A video" else "\"$title\""
+        post(context, ID_REDIRECT_BASE + (url.hashCode() and 0xFFFF),
+            "$what: the server redirected to ${origin ?: "another address"}, which the app won't follow. It'll keep trying your saved address.")
+    }
+
+    fun clearRedirectNotice(context: Context, url: String) {
+        NotificationManagerCompat.from(context).cancel(ID_REDIRECT_BASE + (url.hashCode() and 0xFFFF))
     }
 
     /** The sign-in ask is answered; clear it no matter how he got in. */

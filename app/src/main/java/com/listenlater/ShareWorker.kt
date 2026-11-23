@@ -21,7 +21,9 @@ object QueueLock {
  * Sends queued shares one at a time, fairly: every link carries its own retry count,
  * and after a failed try it moves to the back so the others get a turn. Network
  * failures retry quietly on the Backoff rhythm with no limit - a server down for
- * hours no longer parks anything. A server-given reason parks the video under
+ * hours no longer parks anything, and a redirect the app won't follow retries the
+ * same way (with one notification naming where the server tried to send it). A
+ * server-given reason parks the video under
  * "Couldn't get it" (which clears itself after about a day) with one quick retry
  * first; a missing or expired sign-in raises one notification. What happens for
  * each outcome lives in [ShareLogic] so every path is unit-tested. Login itself
@@ -64,8 +66,10 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         } catch (e: Api.SessionExpired) {
             ShareLogic.Outcome.SESSION_EXPIRED
         } catch (e: Api.RedirectRefused) {
-            return parkForRefusal(queue, url, title, item.attempts,
-                "The server redirected to ${e.targetOrigin ?: "another address"}, which the app won't follow. Check your server address.")
+            // Never parked: the share keeps its hourly retry on the saved address (a swept
+            // parked row would silently lose it). One accurate notification per video.
+            if (item.unexpectedSince == null) Notifier.redirectNotice(applicationContext, url, title, e.targetOrigin)
+            ShareLogic.Outcome.REDIRECT_REFUSED
         } catch (e: Api.UnexpectedResponse) {
             ShareLogic.Outcome.UNEXPECTED_RESPONSE
         } catch (e: Api.ApiError) {
@@ -81,6 +85,7 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
                 queue.removeFromQueue(url)
                 queue.removeSkipped(url)
                 Notifier.cancelSkipped(applicationContext, url)
+                Notifier.clearRedirectNotice(applicationContext, url)
                 requeueUnreachable(queue)
                 if (queue.shareQueue().isNotEmpty()) enqueue(applicationContext, 0L)
             }
