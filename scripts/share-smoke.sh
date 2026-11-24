@@ -43,18 +43,42 @@ done
 if [ -z "$FOUND" ]; then echo "SHARE SMOKE FAIL: shared URL never reached the queue"; exit 1; fi
 echo "SHARE SMOKE TEST PASS"
 
-# Control what could consume the queue after relaunch: with no valid session the
-# worker holds the queue quietly BY DESIGN. Prove there is no session rather than
-# relying on it incidentally.
-if adb shell run-as com.listenlater cat shared_prefs/creds.xml 2>/dev/null | grep -q .; then
-  echo "KILL PERSISTENCE SKIP: a session file exists, consumption is not controlled"; exit 1
-fi
-
+# Control what could consume the queue after relaunch: ShareWorker only consumes
+# with a login token, and only an interactive login can write one (none runs in
+# this job). Prove it instead of relying on it: wipe the session store (main file
+# + the framework's crashed-write .bak), verify both ABSENT at kill time, then
+# after relaunch verify the startup-recreated store holds ZERO entries - the
+# store is EncryptedSharedPreferences (key names encrypted too), so any entry
+# shows up as a name= attribute and zero entries proves no token can exist.
+# (Startup warm() creates an EMPTY creds.xml on first launch, so mere existence
+# of the file is not a session; the old existence check skipped every run - CI
+# run 45309919024.)
 adb shell am force-stop com.listenlater
 if adb shell pidof com.listenlater >/dev/null 2>&1; then echo "KILL PERSISTENCE FAIL: force-stop left a process"; exit 1; fi
+adb shell run-as com.listenlater rm -f shared_prefs/creds.xml shared_prefs/creds.xml.bak
+for f in creds.xml creds.xml.bak; do
+  if adb shell run-as com.listenlater ls "shared_prefs/$f" >/dev/null 2>&1; then
+    echo "KILL PERSISTENCE FAIL: could not remove $f for a proven no-session state"; exit 1
+  fi
+done
 adb shell am start -n com.listenlater/.MainActivity 2>&1 | tee /tmp/smoke-relaunch.log
 if grep -qi "error" /tmp/smoke-relaunch.log; then echo "KILL PERSISTENCE FAIL: relaunch error"; exit 1; fi
 sleep 6
+# An EMPTY EncryptedSharedPreferences file is NOT entry-free: it always carries the
+# two tink keyset metadata entries - key names verified from the actual dependency
+# (security-crypto-1.1.0-alpha06 EncryptedSharedPreferences.class strings):
+#   __androidx_security_crypto_encrypted_prefs_key_keyset__
+#   __androidx_security_crypto_encrypted_prefs_value_keyset__
+# Real credential keys (token, server, ...) are stored under ENCRYPTED names, so any
+# name= attribute outside the two metadata aliases proves a credential was written.
+# Nothing in this job logs in, so none may exist.
+BAD=$(adb shell run-as com.listenlater cat shared_prefs/creds.xml 2>/dev/null \
+  | grep -o 'name="[^"]*"' \
+  | grep -v '__androidx_security_crypto_encrypted_prefs_key_keyset__' \
+  | grep -v '__androidx_security_crypto_encrypted_prefs_value_keyset__' || true)
+if [ -n "$BAD" ]; then
+  echo "KILL PERSISTENCE FAIL: session store holds a credential entry after relaunch; consumption not controlled"; exit 1
+fi
 if adb shell run-as com.listenlater cat "$QFILE" 2>/dev/null | grep -q "$SMOKE_ID"; then
   echo "KILL PERSISTENCE PASS"
 else

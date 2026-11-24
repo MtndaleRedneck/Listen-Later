@@ -137,15 +137,18 @@ class CredStoreDeviceRecoveryTest {
         assertNull(store.token)
 
         // A write interrupted mid-swap leaves the framework's own backup next to the
-        // unreadable file; SharedPreferencesImpl would resurrect it over any fresh file
-        // and deleteSharedPreferences would delete it, so recovery must move it aside too.
-        java.io.File(dir, "creds.xml.bak").writeBytes(unreadable)
+        // unreadable file: the PREVIOUS generation's bytes, distinct from the current
+        // file's, so the preservation assertions can tell the two generations apart.
+        // SharedPreferencesImpl would resurrect a leftover .bak over any fresh file and
+        // deleteSharedPreferences would delete it, so recovery must move it aside too.
+        val backupBytes = byteArrayOf(1, 2, 3, 4) + unreadable
+        java.io.File(dir, "creds.xml.bak").writeBytes(backupBytes)
         store.markLoggedIn("http://srv", "u", "T2", "p", false)
 
         assertArrayEquals("the unreadable file moved aside",
             unreadable, java.io.File(dir, "creds.unreadable.xml").readBytes())
-        assertArrayEquals("the crashed-write backup moved aside with it, not deleted",
-            unreadable, java.io.File(dir, "creds.unreadable.xml.bak").readBytes())
+        assertArrayEquals("the crashed-write backup moved aside as its OWN generation, not deleted",
+            backupBytes, java.io.File(dir, "creds.unreadable.xml.bak").readBytes())
         assertEquals("the fresh login landed", "T2", store.token)
         CredStore.resetForTests()
         assertEquals("and reads back from the fresh file, no resurrection",
@@ -161,11 +164,18 @@ class CredStoreDeviceRecoveryTest {
         val store = CredStore(ctx)
         assertNull(store.token)
 
+        // A crashed-write backup from the previous generation is present too: the
+        // rollback must restore it alongside the main file.
+        val backupBytes = byteArrayOf(9, 8, 7) + original
+        java.io.File(dir, "creds.xml.bak").writeBytes(backupBytes)
+
         CredStore.failNextCreateForTests = true
         store.markLoggedIn("http://srv", "u", "T2", "p", false)
 
         assertArrayEquals("the original bytes are restored after a failed recreate", original, credsFile().readBytes())
+        assertArrayEquals("the previous generation's backup is restored too", backupBytes, java.io.File(dir, "creds.xml.bak").readBytes())
         assertTrue("no aside is left behind after a rollback", !File(dir, "creds.unreadable.xml").exists())
+        assertTrue("no backup aside is left behind after a rollback", !File(dir, "creds.unreadable.xml.bak").exists())
         CredStore.resetForTests()
         assertNull("the session stays memory-only and signed out", CredStore(ctx).token)
     }
