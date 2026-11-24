@@ -1,0 +1,106 @@
+# Phase-2 static analysis: Android Lint + detekt, report-only.
+# Findings upload to GitHub code scanning (Security tab); the job NEVER fails
+# on findings. No product/build files are touched: lint SARIF output is injected
+# by an init script; detekt runs as the official standalone CLI (no Gradle
+# plugin application, no build-file changes).
+# detekt CLI pinned: v1.23.8 -all.jar from the official GitHub release,
+# sha256 measured on download 2026-11-23 (detekt publishes no checksums).
+name: Static Analysis (lint/detekt)
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1'   # weekly, Monday 05:17 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-analysis-${{ github.ref }}
+  cancel-in-progress: false   # never cancel builders' runs; wait our turn
+
+jobs:
+  lint:
+    name: Android Lint (report-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      security-events: write   # SARIF upload
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960af0ae342bfc4d2739a4a46557974dd479 # v4.4.0
+      - uses: actions/setup-java@cf277c60e1cf252c6b4a4684e6780d6238cb2085 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
+      - name: Run Android Lint (report-only)
+        run: ./gradlew -I .github/analysis/lint-sarif.init.gradle lint --continue || true
+      - name: Collect lint reports
+        if: always()
+        run: |
+          mkdir -p /tmp/sarif-lint /tmp/html-lint
+          find . -path '*/build/reports/lint-results*.sarif' -exec cp --backup=numbered {} /tmp/sarif-lint/ \; || true
+          find . -path '*/build/reports/lint-results*.html' -exec cp --backup=numbered {} /tmp/html-lint/ \; || true
+          ls -la /tmp/sarif-lint/ || true
+      - name: Upload lint SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: /tmp/sarif-lint
+          category: android-lint
+          wait-for-processing: false
+        continue-on-error: true
+      - name: Upload lint HTML report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lint-report
+          path: /tmp/html-lint/
+          if-no-files-found: ignore
+
+  detekt:
+    name: detekt (report-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960af0ae342bfc4d2739a4a46557974dd479 # v4.4.0
+      - uses: actions/setup-java@cf277c60e1cf252c6b4a4684e6780d6238cb2085 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download pinned detekt CLI
+        run: |
+          curl -sSfL -o /tmp/detekt-cli.jar \
+            https://github.com/detekt/detekt/releases/download/v1.23.8/detekt-cli-1.23.8-all.jar
+          echo "2ce2ff952e150baf28a29cda70a363b0340b3e81a55f43e51ec5edffc3d066c1  /tmp/detekt-cli.jar" | sha256sum -c -
+      - name: Run detekt (report-only)
+        run: |
+          java -jar /tmp/detekt-cli.jar \
+            --input . \
+            --config .github/analysis/detekt-config.yml \
+            --build-upon-default-config \
+            --parallel \
+            --excludes "**/build/**,**/res/**,**/.git/**" \
+            --report sarif:/tmp/detekt.sarif \
+            --report html:/tmp/detekt.html || true
+          ls -la /tmp/detekt.sarif /tmp/detekt.html || true
+      - name: Upload detekt SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: /tmp/detekt.sarif
+          category: detekt
+          wait-for-processing: false
+        continue-on-error: true
+      - name: Upload detekt HTML report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: detekt-report
+          path: /tmp/detekt.html
+          if-no-files-found: ignore
