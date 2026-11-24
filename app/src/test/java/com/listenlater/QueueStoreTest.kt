@@ -44,7 +44,8 @@ class QueueStoreTest {
         val idx = ShareLogic.firstDueIndex(q.map { it.nextRetryAt }, 5_000L)
         assertEquals(1, idx)
         assertEquals("https://youtu.be/two", q[idx].url)
-        assertEquals(5_000L, ShareLogic.nextWakeDelayMs(q.map { it.nextRetryAt }, 5_000L))
+        // Two items are still due (their retry time is 0): the next pass runs at once.
+        assertEquals(0L, ShareLogic.nextWakeDelayMs(q.map { it.nextRetryAt }, 5_000L))
     }
 
     @Test

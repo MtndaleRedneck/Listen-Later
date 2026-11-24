@@ -15,3 +15,14 @@ for i in $(seq 1 15); do
   fi
 done
 if [ -n "$FOUND" ]; then echo "SHARE SMOKE TEST PASS"; else echo "SHARE SMOKE TEST FAIL: shared URL never reached the queue"; exit 1; fi
+
+# Kill persistence: a real force-stop, then a cold relaunch of the app; the queued
+# share must still be there (re-read from disk, never wiped by startup).
+adb shell am force-stop com.listenlater
+adb shell am start -n com.listenlater/.MainActivity >/dev/null
+sleep 6
+if adb shell run-as com.listenlater cat shared_prefs/queue_store.xml 2>/dev/null | grep -q "$SMOKE_ID"; then
+  echo "KILL PERSISTENCE PASS"
+else
+  echo "KILL PERSISTENCE FAIL: queued share lost across force-stop + relaunch"; exit 1
+fi
