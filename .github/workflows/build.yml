@@ -64,7 +64,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then echo "No signing secrets set"; exit 1; fi
-          trap 'rm -f "$RUNNER_TEMP/release.keystore"' EXIT
+          # No cleanup trap here: a step-scoped EXIT trap would delete the file
+          # before the Build APKs step reads it. Cleanup lives in Build APKs.
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
           echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
@@ -72,6 +73,12 @@ jobs:
         env:
           KEY_ALIAS: listenlater
         run: |
+          # Keystore cleanup survives a Gradle failure (step-scoped trap).
+          trap 'rm -f "$RUNNER_TEMP/release.keystore" "$RUNNER_TEMP/ci-throwaway.keystore"' EXIT
+          if [ -n "$KEYSTORE_FILE" ] && [ ! -f "$KEYSTORE_FILE" ]; then
+            echo "KEYSTORE_FILE is set but the file is missing: $KEYSTORE_FILE" >&2
+            exit 1
+          fi
           if [ -z "$KEYSTORE_FILE" ]; then
             keytool -genkeypair -v -keystore "$RUNNER_TEMP/ci-throwaway.keystore" \
               -alias listenlater -keyalg RSA -keysize 2048 -validity 10000 \
@@ -81,7 +88,6 @@ jobs:
             export KEYSTORE_PASSWORD=ci-throwaway
           fi
           ./gradlew --no-daemon assembleRelease assembleDebug
-          rm -f "$RUNNER_TEMP/release.keystore" "$RUNNER_TEMP/ci-throwaway.keystore"
 
       - name: Name the APK
         run: |
@@ -99,7 +105,12 @@ jobs:
   # An existing release is never replaced; bump versionName for a new one.
   # The write token lives only in this main-only publish job (ChatGPT review).
   publish:
-    needs: build
+    # Every release-correctness job must be green BEFORE the release is
+    # created (I2 review): the publish is the last job, not a parallel one.
+    # upgrade-smoke is publish-dispatch-gated like this job, so on a real
+    # publish run all four needs have run; on any other run this job's own
+    # if is false and it never runs.
+    needs: [build, release-smoke, migration-test, upgrade-smoke]
     if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
