@@ -2,7 +2,7 @@
 
 # Listen Later
 
-Share a video to your podcast app. Listen Later is an Android companion
+Share a YouTube video to your podcast app. Listen Later is an Android companion
 for a self-hosted [PigeonPod](https://github.com/aizhimou/pigeon-pod) server:
 you share a video to it, the server's built-in Individual Videos feed picks
 it up, and your podcast app plays it like any episode.
@@ -11,9 +11,12 @@ Inspired by the original Listenbox app, which shut down in 2025. Not affiliated 
 
 ## How it works
 
-1. Sign in once with your server address and login.
-2. Share a video to Listen Later from any app. One tap, nothing opens, a
-   toast confirms it was sent.
+1. Sign in with your server address and login. You'll need to sign in again
+   when your session expires.
+2. Share a YouTube video to Listen Later, from YouTube or any app sharing
+   its link (individual videos, not whole playlists). One tap, nothing
+   opens. If you're signed out or offline, the video is saved and sends
+   when it can.
 3. The video shows up in your Individual Videos feed. The app's main screen
    has a Copy feed link button for subscribing to that feed in your podcast
    app.
@@ -23,8 +26,8 @@ where you set them on your server's website.
 
 ## Install
 
-Grab the APK from the [latest release](../../releases/latest) and install
-it. You need a self-hosted PigeonPod server you can sign in to, and any
+Grab the APK from the [download page](https://mtndaleredneck.github.io/Listen-Later/)
+and install it. You need a self-hosted PigeonPod server you can sign in to, and any
 podcast app that can subscribe to an RSS feed.
 
 Setup, privacy (including what the update check sends), and screenshots are
