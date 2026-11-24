@@ -30,6 +30,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -57,7 +59,7 @@ fun SettingsScreen(
             Box(
                 Modifier.size(48.dp).clip(RoundedCornerShape(11.dp))
                     .semantics { contentDescription = "Back" }
-                    .clickable(onClickLabel = "Back", role = Role.Button, onClick = onBack),
+                    .clickable(role = Role.Button, onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(color = NavBg, shape = RoundedCornerShape(11.dp), modifier = Modifier.size(40.dp)) {
@@ -84,13 +86,21 @@ fun SettingsScreen(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .clickable(enabled = serverUrl != null, onClickLabel = "Open server webpage", role = Role.Button) {
-                        val raw = serverUrl ?: return@clickable
-                        val url = if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "https://$raw"
-                        runCatching {
+                        val raw = serverUrl?.trim().orEmpty()
+                        val url = when {
+                            raw.isEmpty() -> null
+                            Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> raw
+                            raw.contains("://") -> null   // non-web scheme: never open
+                            else -> "https://$raw"
+                        }
+                        val opened = url != null && runCatching {
                             context.startActivity(
                                 Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             )
+                        }.isSuccess
+                        if (!opened) {
+                            Toast.makeText(context, "Couldn't open the server page", Toast.LENGTH_SHORT).show()
                         }
                     },
                 verticalAlignment = Alignment.CenterVertically,
@@ -121,7 +131,7 @@ fun SettingsScreen(
         // Copy feed link: its own button, like the old Home tile. When there is no feed
         // yet the button is disabled and the subtitle says why - never a silent no-op.
         var copied by remember { mutableStateOf(false) }
-        var resetJob by remember { mutableStateOf<Job?>(null) }
+        val resetJob = remember { arrayOfNulls<Job>(1) }
         Box(
             Modifier.fillMaxWidth().heightIn(min = 62.dp).clip(RoundedCornerShape(18.dp))
                 .background(SageGradient)
@@ -132,8 +142,8 @@ fun SettingsScreen(
                 ) {
                     if (onCopyFeedLink()) {
                         copied = true
-                        resetJob?.cancel()
-                        resetJob = scope.launch { delay(1500); copied = false }
+                        resetJob[0]?.cancel()
+                        resetJob[0] = scope.launch { delay(1500); copied = false }
                     }
                 }
                 .padding(vertical = 10.dp),
@@ -185,11 +195,15 @@ fun SettingsScreen(
                         checking = true
                         result = ""
                         scope.launch {
-                            val outcome = runCatching {
+                            val outcome = try {
                                 withContext(Dispatchers.IO) {
                                     Updater.checkDetailed(BuildConfig.VERSION_NAME)
                                 }
-                            }.getOrElse { Updater.CheckOutcome.Unavailable }
+                            } catch (ce: CancellationException) {
+                                throw ce
+                            } catch (t: Throwable) {
+                                Updater.CheckOutcome.Unavailable
+                            }
                             checking = false
                             when (outcome) {
                                 is Updater.CheckOutcome.Newer -> {

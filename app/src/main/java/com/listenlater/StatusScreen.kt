@@ -37,6 +37,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -146,7 +150,7 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
         Box(
             Modifier.size(48.dp).clip(RoundedCornerShape(11.dp))
                 .semantics { contentDescription = "Settings" }
-                .clickable(onClickLabel = "Open settings", role = Role.Button, onClick = onSettings),
+                .clickable(role = Role.Button, onClick = onSettings),
             contentAlignment = Alignment.Center,
         ) {
             Surface(color = NavBg, shape = RoundedCornerShape(11.dp), modifier = Modifier.size(40.dp)) {
