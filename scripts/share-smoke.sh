@@ -9,7 +9,11 @@
 # kill). It says nothing about surviving a kill DURING a write.
 set -x
 # Unique ID per run: no leftover from a previous run can false-pass.
-SMOKE_ID="smk$(date +%s | tail -c 9)${GITHUB_RUN_ID:-local}"
+# Unique per run AND a syntactically valid YouTube id: VideoUrl.cleanSharedUrl only
+# accepts the exact 11-char [A-Za-z0-9_-] shape, so the id is built as "smk" plus 8
+# digits from the epoch-nanosecond clock (CI run 45306843042 failed exactly here: a
+# 22-char id was correctly rejected by the app and the queue stayed empty).
+SMOKE_ID="smk$(date +%s%N | tail -c 9)"
 SHARE_URL="https://www.youtube.com/watch?v=$SMOKE_ID"
 QFILE="shared_prefs/queue_store.xml"
 

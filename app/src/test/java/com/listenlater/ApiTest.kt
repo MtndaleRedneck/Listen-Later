@@ -176,6 +176,109 @@ class ApiTest {
     }
 
     /** A MockWebServer with real TLS (self-signed localhost cert) and an Api whose client trusts it. */
+    @Test
+    fun loginWithoutCaptchaOmitsTheCaptchaFields() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(ok("null"))
+            .addHeader("Set-Cookie", "pigeonpod=t1; Path=/"))
+        server.start()
+        val api = Api(server.url("/").toString().trimEnd('/'), null)
+        api.login("user", "pw", null, null)
+        val body = server.takeRequest().body.readUtf8()
+        assertFalse("no captcha keys are sent without a challenge",
+            body.contains("captchaId") || body.contains("captchaCode"))
+        server.shutdown()
+    }
+
+    @Test
+    fun blankCaptchaIdOmitsTheCaptchaFields() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(ok("null"))
+            .addHeader("Set-Cookie", "pigeonpod=t1; Path=/"))
+        server.start()
+        val api = Api(server.url("/").toString().trimEnd('/'), null)
+        api.login("user", "pw", "", null)
+        val body = server.takeRequest().body.readUtf8()
+        assertFalse("a blank captcha id is the same as none",
+            body.contains("captchaId") || body.contains("captchaCode"))
+        server.shutdown()
+    }
+
+    @Test
+    fun loginWithCaptchaSendsTheExactIdAndCode() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(ok("null"))
+            .addHeader("Set-Cookie", "pigeonpod=t1; Path=/"))
+        server.start()
+        val api = Api(server.url("/").toString().trimEnd('/'), null)
+        api.login("user", "pw", "cap-1", "4242")
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"captchaId\":\"cap-1\""))
+        assertTrue(body.contains("\"captchaCode\":\"4242\""))
+        server.shutdown()
+    }
+
+    @Test
+    fun captchaAnswerParsesIdAndImage() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(
+            ok("{\"captchaId\":\"c1\",\"imageData\":\"aGVsbG8=\"}")))
+        server.start()
+        val api = Api(server.url("/").toString().trimEnd('/'), null)
+        assertEquals(Pair("c1", "aGVsbG8="), api.captcha())
+        server.shutdown()
+    }
+
+    @Test
+    fun captchaWithoutDataIsACleanApiError() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(ok("null")))
+        server.start()
+        val api = Api(server.url("/").toString().trimEnd('/'), null)
+        val e = assertThrows(Api.ApiError::class.java) { api.captcha() }
+        assertEquals("No captcha returned", e.message)
+        server.shutdown()
+    }
+
+    @Test
+    fun login401IsSessionExpired() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.start()
+        val api = Api(server.url("/").toString().trimEnd('/'), null)
+        assertThrows(Api.SessionExpired::class.java) {
+            api.login("user", "pw", null, null)
+        }
+        server.shutdown()
+    }
+
+    @Test
+    fun loginServerMessageSurfacesVerbatim() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(
+            "{\"code\":5001,\"msg\":\"Wrong captcha\",\"data\":null}"))
+        server.start()
+        val api = Api(server.url("/").toString().trimEnd('/'), null)
+        val e = assertThrows(Api.ApiError::class.java) {
+            api.login("user", "pw", "cap-1", "0000")
+        }
+        assertEquals("Wrong captcha", e.message)
+        server.shutdown()
+    }
+
+    @Test
+    fun loginWithoutASessionCookieIsACleanError() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(ok("null")))
+        server.start()
+        val api = Api(server.url("/").toString().trimEnd('/'), null)
+        val e = assertThrows(Api.ApiError::class.java) {
+            api.login("user", "pw", null, null)
+        }
+        assertEquals("No session returned", e.message)
+        server.shutdown()
+    }
+
     private fun tlsPair(): Pair<MockWebServer, (String) -> Api> {
         val cert = HeldCertificate.Builder()
             .commonName("localhost")
