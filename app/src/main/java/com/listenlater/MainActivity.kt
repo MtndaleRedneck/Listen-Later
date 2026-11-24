@@ -61,8 +61,8 @@ class MainActivity : ComponentActivity() {
                         store!!.needsLogin = true
                     }
                     // CI proof only (debug builds): posts the app's real notifications so the small icon can be
-                    // captured in the status bar and the shade. Only after the demo seed (Demo.active) has replaced the
-                    // stored sign-in with the canned demo account, so it never touches a real login or queue. Uses the production Notifier, no copy of it.
+                    // captured in the status bar and the shade. Runs only after the demo seed (Demo.active), which replaces the
+                    // stored sign-in and queue with canned demo data. A clean CI install is what keeps real data out of it. Uses the production Notifier, no copy of it.
                     if (BuildConfig.DEBUG && Demo.active && intent.getBooleanExtra("postnotice", false)) {
                         store!!.loginNotified = false
                         Notifier.notifySignInOnce(this@MainActivity, store!!)

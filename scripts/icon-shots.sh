@@ -51,15 +51,30 @@ fi
 adb shell input keyevent KEYCODE_HOME
 sleep 3
 adb exec-out screencap -p > $OUT/home-screen.png
+adb shell wm size reset
+adb shell wm density reset
+ls -la $OUT
+
+# Share smoke test (shared with migration-test): needs the debug APK (run-as). It runs BEFORE the notification
+# proof below, because the proof launches the demo seed, which signs the demo account in and would break the
+# smoke test's signed-out starting state.
+SMOKE_RC=0
+case "$APK" in
+  ListenLater-debug-*) ./scripts/share-smoke.sh || SMOKE_RC=$? ;;
+  *) echo "SHARE SMOKE TEST SKIP: no debug APK (run-as needs a debuggable build)" ;;
+esac
+
 # Notification proof: the debug build posts its real notifications (sign-in ask and a skipped video), then the
-# status bar icon and the expanded shade are captured at normal and large font.
+# status bar icon and the expanded shade are captured at normal and large font. Font scale is restored on every
+# exit path. The dumpsys check is only a sanity check that something from the app was posted; the screenshots
+# are the proof.
+trap 'adb shell settings put system font_scale 1.0' EXIT
 adb shell pm grant com.listenlater android.permission.POST_NOTIFICATIONS
 for scale in 1.0 1.3; do
   adb shell settings put system font_scale $scale
   adb shell am force-stop com.listenlater; sleep 1
   adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez postnotice true
   sleep 7
-  # Presence check first: an empty shade must fail the step, not produce a green blank shot.
   adb shell dumpsys notification --noredact | grep -c "pkg=com.listenlater" | tee /tmp/ncount
   [ "$(cat /tmp/ncount)" -ge 1 ] || { echo "NO LISTENLATER NOTIFICATION POSTED"; exit 1; }
   adb shell input keyevent KEYCODE_HOME; sleep 2
@@ -68,13 +83,5 @@ for scale in 1.0 1.3; do
   adb exec-out screencap -p > $OUT/notif-shade-$scale.png
   adb shell cmd statusbar collapse; sleep 1
 done
-adb shell settings put system font_scale 1.0
-adb shell wm size reset
-adb shell wm density reset
 ls -la $OUT
-
-# Share smoke test (shared with migration-test): needs the debug APK (run-as).
-case "$APK" in
-  ListenLater-debug-*) ./scripts/share-smoke.sh ;;
-  *) echo "SHARE SMOKE TEST SKIP: no debug APK (run-as needs a debuggable build)" ;;
-esac
+exit $SMOKE_RC
