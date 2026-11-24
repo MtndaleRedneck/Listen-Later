@@ -142,7 +142,10 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
             // (narrow widths, large font scales) switch to the compact pill instead of
             // shrinking or truncating the word. Offline keeps the full message, wrapping
             // at word boundaries within the free space.
-            val compact = maxWidth < 112.dp
+            // Threshold scales with the system font scale: at 1.3x the normal pill needs
+            // roughly 125-130dp, so the compact pill must take over proportionally earlier
+            // instead of clipping the word at the old fixed cutoff.
+            val compact = maxWidth < 112.dp * LocalConfiguration.current.fontScale
             Surface(color = NavBg, shape = RoundedCornerShape(50), modifier = Modifier.widthIn(max = maxWidth)) {
                 Row(
                     Modifier.padding(horizontal = if (compact) 10.dp else 14.dp, vertical = if (compact) 6.dp else 8.dp),
@@ -151,7 +154,7 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
                     Surface(color = if (connected) Sage else Muted, shape = RoundedCornerShape(50), modifier = Modifier.width(if (compact) 7.dp else 9.dp).height(if (compact) 7.dp else 9.dp)) {}
                     Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
                     if (connected) {
-                        Text("Connected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false)
+                        Text("Connected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
                     } else {
                         Text("Can't reach server", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                     }
