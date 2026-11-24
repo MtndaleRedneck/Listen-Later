@@ -31,7 +31,9 @@ jobs:
       - name: Android SDK 37
         run: |
           if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" >/dev/null
+            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+            unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
+            yes | /tmp/cmdtools/cmdline-tools/bin/sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-37" "build-tools;36.0.0" >/dev/null
           fi
 
       - name: "Guard: update pop-up never scrolls sideways"
@@ -121,7 +123,9 @@ jobs:
       - name: Android SDK 37
         run: |
           if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" >/dev/null
+            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+            unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
+            yes | /tmp/cmdtools/cmdline-tools/bin/sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-37" "build-tools;36.0.0" >/dev/null
           fi
       - name: Enable KVM
         run: |
@@ -185,7 +189,9 @@ jobs:
       - name: Android SDK 37
         run: |
           if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" >/dev/null
+            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+            unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
+            yes | /tmp/cmdtools/cmdline-tools/bin/sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-37" "build-tools;36.0.0" >/dev/null
           fi
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
@@ -238,7 +244,9 @@ jobs:
       - name: Android SDK 37
         run: |
           if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" >/dev/null
+            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+            unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
+            yes | /tmp/cmdtools/cmdline-tools/bin/sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-37" "build-tools;36.0.0" >/dev/null
           fi
       - uses: actions/download-artifact@v4
         with:
