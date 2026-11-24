@@ -29,7 +29,10 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
       - name: Android SDK 37
-        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" >/dev/null
+        run: |
+          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" >/dev/null
+          fi
 
       - name: "Guard: update pop-up never scrolls sideways"
         run: |
@@ -116,7 +119,10 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
       - name: Android SDK 37
-        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" >/dev/null
+        run: |
+          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" >/dev/null
+          fi
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -177,7 +183,10 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
       - name: Android SDK 37
-        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" >/dev/null
+        run: |
+          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" >/dev/null
+          fi
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
       - name: Enable KVM
@@ -227,7 +236,10 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
       - name: Android SDK 37
-        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" >/dev/null
+        run: |
+          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" >/dev/null
+          fi
       - uses: actions/download-artifact@v4
         with:
           name: ListenLater-apk
