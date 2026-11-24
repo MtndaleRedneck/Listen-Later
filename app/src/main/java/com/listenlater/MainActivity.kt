@@ -60,6 +60,13 @@ class MainActivity : ComponentActivity() {
                     if (BuildConfig.DEBUG && intent.getBooleanExtra("needslogin", false)) {
                         store!!.needsLogin = true
                     }
+                    // CI proof only (debug builds): posts the app's real notifications so the small icon can be
+                    // captured in the status bar and the shade. Uses the production Notifier, no copy of it.
+                    if (BuildConfig.DEBUG && intent.getBooleanExtra("postnotice", false)) {
+                        store!!.loginNotified = false
+                        Notifier.notifySignInOnce(this@MainActivity, store!!)
+                        Notifier.skipped(this@MainActivity, "https://example.invalid/demo", "A demo video", "This video is members-only.")
+                    }
                     // CI screenshot of a real send toast, with the worker's own wording.
                     if (BuildConfig.DEBUG && intent.getBooleanExtra("toast", false)) {
                         Toast.makeText(

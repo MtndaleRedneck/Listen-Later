@@ -51,6 +51,21 @@ fi
 adb shell input keyevent KEYCODE_HOME
 sleep 3
 adb exec-out screencap -p > $OUT/home-screen.png
+# Notification proof: the debug build posts its real notifications (sign-in ask and a skipped video), then the
+# status bar icon and the expanded shade are captured at normal and large font.
+adb shell pm grant com.listenlater android.permission.POST_NOTIFICATIONS
+for scale in 1.0 1.3; do
+  adb shell settings put system font_scale $scale
+  adb shell am force-stop com.listenlater; sleep 1
+  adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez postnotice true
+  sleep 7
+  adb shell input keyevent KEYCODE_HOME; sleep 2
+  adb exec-out screencap -p > $OUT/notif-statusbar-$scale.png
+  adb shell cmd statusbar expand-notifications; sleep 3
+  adb exec-out screencap -p > $OUT/notif-shade-$scale.png
+  adb shell cmd statusbar collapse; sleep 1
+done
+adb shell settings put system font_scale 1.0
 adb shell wm size reset
 adb shell wm density reset
 ls -la $OUT
