@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- CI-only probe (debug builds only; merged out of release). Not exported:
+             the platform shell can still start it, other apps cannot. -->
+        <activity android:name=".SessionProbeActivity" android:exported="false" />
+    </application>
+</manifest>
