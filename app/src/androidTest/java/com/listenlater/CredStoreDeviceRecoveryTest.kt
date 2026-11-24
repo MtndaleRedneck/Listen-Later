@@ -128,6 +128,31 @@ class CredStoreDeviceRecoveryTest {
     }
 
     @Test
+    fun aCrashedWriteBackupIsPreservedAsideWithItsGeneration() {
+        CredStore(ctx).markLoggedIn("http://srv", "u", "T1", "p", false)
+        corruptKeysets()
+        val unreadable = credsFile().readBytes()
+        CredStore.resetForTests()
+        val store = CredStore(ctx)
+        assertNull(store.token)
+
+        // A write interrupted mid-swap leaves the framework's own backup next to the
+        // unreadable file; SharedPreferencesImpl would resurrect it over any fresh file
+        // and deleteSharedPreferences would delete it, so recovery must move it aside too.
+        java.io.File(dir, "creds.xml.bak").writeBytes(unreadable)
+        store.markLoggedIn("http://srv", "u", "T2", "p", false)
+
+        assertArrayEquals("the unreadable file moved aside",
+            unreadable, java.io.File(dir, "creds.unreadable.xml").readBytes())
+        assertArrayEquals("the crashed-write backup moved aside with it, not deleted",
+            unreadable, java.io.File(dir, "creds.unreadable.xml.bak").readBytes())
+        assertEquals("the fresh login landed", "T2", store.token)
+        CredStore.resetForTests()
+        assertEquals("and reads back from the fresh file, no resurrection",
+            "T2", CredStore(ctx).token)
+    }
+
+    @Test
     fun aFailedRecreateRollsTheOriginalBytesBack() {
         CredStore(ctx).markLoggedIn("http://srv", "u", "T1", "p", false)
         corruptKeysets()

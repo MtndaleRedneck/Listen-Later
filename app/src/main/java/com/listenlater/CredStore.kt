@@ -127,11 +127,21 @@ class CredStore private constructor(private val appContext: Context, initialStor
             var aside = java.io.File(dir, "creds.unreadable.xml")
             var gen = 2
             while (aside.exists()) { aside = java.io.File(dir, "creds.unreadable.$gen.xml"); gen++ }
+            // The framework's own crashed-write backup (creds.xml.bak) is preserved with its
+            // generation: SharedPreferencesImpl.loadFromDisk RESURRECTS a leftover .bak over
+            // the fresh file (it deletes creds.xml and renames the .bak into place), and
+            // deleteSharedPreferences deletes the .bak outright - both would destroy the one
+            // other copy of the original bytes. The .bak moves FIRST: a crash after it but
+            // before the main file leaves the unreadable file in place with no backup to
+            // resurrect, so the next open simply falls back to memory again.
+            val oldBak = java.io.File(dir, "creds.xml.bak")
+            val asideBak = java.io.File(dir, aside.name + ".bak")
             try {
+                if (oldBak.isFile) check(oldBak.renameTo(asideBak)) { "could not move the crashed-write backup aside" }
                 if (old.isFile) check(old.renameTo(aside)) { "could not move the unreadable file aside" }
                 // Evict the framework's File-keyed SharedPreferences cache entry: it can still
                 // hold the undecryptable instance, and a fresh create under the same name would
-                // reuse it. The file is already aside, so only the cached instance is dropped.
+                // reuse it. Both files are already aside, so only the cached instance is dropped.
                 appContext.deleteSharedPreferences("creds")
                 try {
                     val freshPrefs = create(appContext)
@@ -149,8 +159,10 @@ class CredStore private constructor(private val appContext: Context, initialStor
                     instance = freshPrefs // every live CredStore follows this store now
                 } catch (e: Exception) {
                     // Recreate failed: drop the partial fresh file AND its cache entry, put the
-                    // original bytes back, stay memory-only.
+                    // original bytes back (backup first, so its restore cannot be clobbered by
+                    // a partial fresh write), stay memory-only.
                     appContext.deleteSharedPreferences("creds")
+                    if (asideBak.isFile && !oldBak.isFile) asideBak.renameTo(oldBak)
                     if (aside.isFile && !old.isFile) aside.renameTo(old)
                 }
             } catch (e: Exception) {
