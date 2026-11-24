@@ -133,20 +133,25 @@ jobs:
             echo "Release $TAG already exists. Bump versionName to publish a new release."
             exit 0
           fi
-          grep -q "^## What's new in $VERSION\$" release-notes.md || { echo "release-notes.md is not for $VERSION"; exit 1; }
+          # Publish ONLY this version's section: release-notes.md keeps full history,
+          # but old history in the public notes is a rules violation (v1.7.0 incident).
+          awk -v v="$VERSION" '
+            $0 ~ "^## What'\''s new in " v "$" {found=1; print; next}
+            found && /^## / {exit}
+            found {print}
+          ' release-notes.md > /tmp/notes.md
+          [ -s /tmp/notes.md ] || { echo "release-notes.md has no section for $VERSION"; exit 1; }
+          # Rule guard: public notes carry no links and no commit hashes.
+          if grep -qE '\]\(|https?://|\b[0-9a-f]{7,40}\b' /tmp/notes.md; then
+            echo "notes for $VERSION contain a link or commit hash - rules violation, refusing to publish"
+            exit 1
+          fi
           COVER=docs/podcast-cover-3000.png
           echo "$EXPECTED_COVER_SHA256  $COVER" | sha256sum -c - || { echo "cover art hash mismatch - refusing to publish"; exit 1; }
-          if [ -f release-notes.md ]; then
-            gh release create "$TAG" "ListenLater-v$VERSION.apk" "$COVER" \
-              --target "$(git rev-parse HEAD)" \
-              --title "Listen Later $TAG" \
-              --notes-file release-notes.md
-          else
-            gh release create "$TAG" "ListenLater-v$VERSION.apk" "$COVER" \
-              --target "$(git rev-parse HEAD)" \
-              --title "Listen Later $TAG" \
-              --notes "Listen Later $TAG."
-          fi
+          gh release create "$TAG" "ListenLater-v$VERSION.apk" "$COVER" \
+            --target "$(git rev-parse HEAD)" \
+            --title "Listen Later $TAG" \
+            --notes-file /tmp/notes.md
 
   # In-place upgrade acceptance on the minified build (Gemini review): published
   # 1.6.4 (vc13) with a queued share upgraded to the new vc14 APK. Real release

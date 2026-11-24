@@ -1,13 +1,13 @@
 ## What's new in 1.7.0
 
-November 24, 2026. A big under-the-hood update: the app is rebuilt on the current Android foundations and is now 87% smaller, with everything you use unchanged.
+November 24, 2026. An under-the-hood update: the app is rebuilt on current Android foundations and is now 87% smaller, with everything you use unchanged.
 
 Improved:
-- Much smaller app: the download drops from 22 MB to about 3 MB by stripping code and resources the app never actually uses. ([a999d5c](https://github.com/MtndaleRedneck/Listen-Later/commit/a999d5c6a8d74c439657a8ad06e94ec0d4fa69e3))
-- Updated everything the app is built on: the current Android 37 platform, Kotlin 2.4.21, Compose 2026.09, WorkManager 2.12, OkHttp 5.5.1 and security-crypto 1.1.0, keeping the app current and secure. ([a999d5c](https://github.com/MtndaleRedneck/Listen-Later/commit/a999d5c6a8d74c439657a8ad06e94ec0d4fa69e3))
+- Much smaller app: the download drops from 22 MB to about 3 MB by stripping code and resources the app never uses.
+- Updated everything the app is built on to current versions.
 
 Fixed:
-- Corrected six spots in the docs that no longer matched what the app does (share messages, playlist sharing, skipped-share cleanup, update checks, feedback preview). ([a999d5c](https://github.com/MtndaleRedneck/Listen-Later/commit/a999d5c6a8d74c439657a8ad06e94ec0d4fa69e3))
+- Corrected six spots in the docs that no longer matched what the app does (share messages, playlist sharing, skipped-share cleanup, update checks, feedback preview).
 
 ## What's new in 1.6.4
 
