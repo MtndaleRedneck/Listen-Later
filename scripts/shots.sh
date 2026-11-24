@@ -44,6 +44,7 @@ shot v15-signin --ez demo true --ez signedout true
 # Sign-out confirm dialog.
 adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5
+tap_text "Settings"; sleep 2
 tap_text "Sign out"; sleep 1
 adb exec-out screencap -p > $OUT/v15-signout-confirm.png
 adb shell input keyevent KEYCODE_BACK; sleep 1
@@ -52,7 +53,7 @@ adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5
 tap_text "Settings"; sleep 2
 adb exec-out screencap -p > $OUT/v15-settings.png
-tap_text "General feedback, bugs, and feature suggestions"; sleep 2
+tap_text "Send feedback, report a bug, or suggest a feature"; sleep 2
 adb exec-out screencap -p > $OUT/v15-feedback.png
 # The new queue states, with real shared titles: sending, retrying at a time,
 # unexpected server replies past an hour, one very long title for the wrap check.

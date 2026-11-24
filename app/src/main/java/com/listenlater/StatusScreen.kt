@@ -17,6 +17,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
@@ -35,6 +36,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -121,15 +123,28 @@ private val TopArrowIcon: ImageVector = ImageVector.Builder(
 ).build()
 
 @Composable
-private fun AppHeader(onSettings: () -> Unit) {
+private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     val ctx = LocalContext.current
     val icon = remember { ctx.packageManager.getApplicationIcon(ctx.packageName).toImageBitmap() }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 18.dp)) {
-        Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)))
-        Spacer(Modifier.width(12.dp))
-        Text("Listen Later", fontSize = 21.sp, fontWeight = FontWeight.Bold, color = TextC, modifier = Modifier.weight(1f))
-        IconButton(onClick = onSettings) {
-            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Muted)
+        Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
+        Spacer(Modifier.width(8.dp))
+        Text("Listen Later", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextC)
+        // Status pill centered in the free space between the name and the gear tile.
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Surface(color = NavBg, shape = RoundedCornerShape(50)) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = if (connected) Sage else Muted, shape = RoundedCornerShape(50), modifier = Modifier.width(9.dp).height(9.dp)) {}
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (connected) "Connected" else "Can't reach server", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextC)
+                }
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Surface(color = NavBg, shape = RoundedCornerShape(11.dp), modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Sage)
+            }
         }
     }
 }
@@ -152,7 +167,6 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     var loadFailed by remember { mutableStateOf(false) }
     var episodes by remember { mutableStateOf<List<EpisodeItem>>(emptyList()) }
     var feedUrl by remember { mutableStateOf(store.feedUrl) }
-    var copied by remember { mutableStateOf(false) }
     var updateUi by remember { mutableStateOf<UpdateUi?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
     var subScreen by rememberSaveable { mutableStateOf("") } // "", "settings" or "feedback"
@@ -384,6 +398,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             onBack = { subScreen = "" },
             onFeedback = { subScreen = "feedback" },
             onUpdateFound = { info -> updateUi = UpdateUi.Offer(info) },
+            username = store.username ?: "",
+            serverUrl = store.server,
+            onCopyFeedLink = { copyFeedLink() },
+            onSignOut = { signOutAsk = true },
         )
     } else if (subScreen == "feedback") {
         FeedbackScreen(onBack = { subScreen = "settings" })
@@ -406,44 +424,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             modifier = Modifier.fillMaxSize().padding(16.dp)
         ) {
             Spacer(Modifier.height(2.dp))
-            AppHeader(onSettings = { subScreen = "settings" })
-            Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
-                Column(Modifier.padding(18.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = if (loadFailed) Muted else Sage,
-                                shape = RoundedCornerShape(50),
-                                modifier = Modifier.width(9.dp).height(9.dp)
-                            ) {}
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                if (loadFailed) "Can't reach server" else "Connected",
-                                fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextC
-                            )
-                        }
-                        // Tappable: opens the server in the browser.
-                        Text(
-                            host(),
-                            fontSize = 13.sp, color = Muted,
-                            modifier = Modifier.clickable {
-                                val url = store.server ?: return@clickable
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-
+            AppHeader(onSettings = { subScreen = "settings" }, connected = !loadFailed)
             if (!loading && !hasRows) {
                 Spacer(Modifier.height(14.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
@@ -469,8 +450,12 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
 
             if (hasRows) {
                 Spacer(Modifier.height(14.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.weight(1f)) {
+                Box(
+                    Modifier.weight(1f)
+                        .shadow(4.dp, RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(CardGradient)
+                ) {
                     Box {
                     Column(Modifier.verticalScroll(listScroll).padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 64.dp)) {
                         queued.forEach { q ->
@@ -619,56 +604,6 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 }
             }
 
-            if (episodes.isNotEmpty() || feedUrl != null) {
-                Spacer(Modifier.height(14.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
-                    Column(Modifier.padding(horizontal = 18.dp, vertical = 13.dp)) {
-                        Button(
-                            onClick = {
-                                if (copyFeedLink()) {
-                                    copied = true
-                                    scope.launch { delay(1500); copied = false }
-                                }
-                            },
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Sage,
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    if (copied) "\u2713 Copied" else "Copy feed link",
-                                    fontSize = 15.sp, fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    "Paste into your podcast app",
-                                    fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f)
-                                )
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 13.dp),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text("Sign out", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { signOutAsk = true })
-                        }
-                    }
-                }
-            } else if (!loading) {
-                Spacer(Modifier.height(14.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text("Sign out", fontSize = 15.sp, color = Sage, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.clickable { signOutAsk = true })
-                    }
-                }
-            }
         }
 
     }
