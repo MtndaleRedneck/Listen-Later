@@ -7,7 +7,7 @@ New:
 
 Improved:
 - Refreshed home screen: the connection status sits in a pill in the top bar, list cards have a soft gradient, and rows show full video titles and error details instead of cutting them off.
-- Refreshed Settings: clearer account controls with sign out and a tappable server link, plus a prominent Copy feed link button.
+- Sign out, copy feed link, and the server link moved from the home screen into Settings: the server link is tappable and Copy feed link is a prominent button.
 - Clearer wording when the feed link isn't available yet.
 
 ## What's new in 1.7.0
