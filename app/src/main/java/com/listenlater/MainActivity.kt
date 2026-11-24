@@ -20,6 +20,10 @@ import androidx.compose.ui.Modifier
 import android.widget.Toast
 import kotlinx.coroutines.delay
 
+/** Process-scoped: the startup queue nudge fires once per process (see the LaunchedEffect
+ *  below); a process death re-arms it. */
+private var queueNudged = false
+
 class MainActivity : ComponentActivity() {
 
     private val notifPermission =
@@ -81,9 +85,13 @@ class MainActivity : ComponentActivity() {
                             if (needsLogin && screen != "signin") screen = "signin"
                         }
                         // A share whose process died between its durable queue write and the
-                        // worker kick is still on disk; nudge the queue once at startup.
+                        // worker kick is still on disk; nudge the queue once PER PROCESS,
+                        // not on every recreation - a re-nudge REPLACEs and cancels an
+                        // in-flight send. Process death re-arms the flag, which is exactly
+                        // when a killed share still needs the kick.
                         LaunchedEffect(Unit) {
-                            if (QueueStore(this@MainActivity).shareQueue().isNotEmpty()) {
+                            if (!queueNudged && QueueStore(this@MainActivity).shareQueue().isNotEmpty()) {
+                                queueNudged = true
                                 ShareWorker.enqueue(this@MainActivity, 0L)
                             }
                         }

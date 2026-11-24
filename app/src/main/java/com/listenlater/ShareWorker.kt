@@ -82,6 +82,9 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         } catch (e: Api.SessionExpired) {
             ShareLogic.Outcome.SESSION_EXPIRED
         } catch (e: Api.RedirectRefused) {
+            // Cancel still wins before any notice or queue mutation, same as the refusal
+            // path below: a REPLACE-cancelled run must not touch state its replacement owns.
+            currentCoroutineContext().ensureActive()
             // Never parked: the share keeps its hourly retry on the saved address (a swept
             // parked row would silently lose it). One accurate notification per video,
             // tracked on the queue entry itself so an earlier hiccup can't suppress it.

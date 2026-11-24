@@ -100,15 +100,8 @@ class CredStore private constructor(private val appContext: Context, initialStor
             q.skipped().forEach { Notifier.cancelSkipped(appContext, it.url); Notifier.clearRedirectNotice(appContext, it.url) }
             q.clearAll()
         }
-        e.putString("server", server)
-            .putString("username", username)
-            .putString("token", token)
-            .putLong("loginAt", System.currentTimeMillis())
-            .putBoolean("needsLogin", false)
-            .putBoolean("loginNotified", false)
-            .putBoolean("signedOut", false)
-            .putBoolean("rememberMe", remember)
-        if (remember) e.putString("password", password) else e.remove("password")
+        val loginAt = System.currentTimeMillis()
+        e.putLogin(server, username, token, password, remember, loginAt)
         e.apply()
         _needsLogin.value = false
         if (prefs is MemoryPrefs) {
@@ -145,16 +138,7 @@ class CredStore private constructor(private val appContext: Context, initialStor
                 appContext.deleteSharedPreferences("creds")
                 try {
                     val freshPrefs = create(appContext)
-                    val fresh = freshPrefs.edit()
-                        .putString("server", server)
-                        .putString("username", username)
-                        .putString("token", token)
-                        .putLong("loginAt", System.currentTimeMillis())
-                        .putBoolean("needsLogin", false)
-                        .putBoolean("loginNotified", false)
-                        .putBoolean("signedOut", false)
-                        .putBoolean("rememberMe", remember)
-                    if (remember) fresh.putString("password", password)
+                    val fresh = freshPrefs.edit().putLogin(server, username, token, password, remember, loginAt)
                     check(fresh.commit()) { "fresh login did not land on disk" }
                     instance = freshPrefs // every live CredStore follows this store now
                 } catch (e: Exception) {
@@ -169,6 +153,22 @@ class CredStore private constructor(private val appContext: Context, initialStor
                 // Could not even move the file aside: nothing was changed, stay memory-only.
             }
         }
+    }
+
+    /** The credential field set, written identically to the live store and to a recreated
+     *  file after an unreadable one: one helper, so a future field can't land in one and
+     *  not the other. */
+    private fun SharedPreferences.Editor.putLogin(server: String, username: String, token: String, password: String, remember: Boolean, loginAt: Long): SharedPreferences.Editor {
+        putString("server", server)
+        putString("username", username)
+        putString("token", token)
+        putLong("loginAt", loginAt)
+        putBoolean("needsLogin", false)
+        putBoolean("loginNotified", false)
+        putBoolean("signedOut", false)
+        putBoolean("rememberMe", remember)
+        if (remember) putString("password", password) else remove("password")
+        return this
     }
 
     /**

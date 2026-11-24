@@ -163,4 +163,43 @@ class ShareWorkerTest {
         assertTrue(QueueStore(ctx).skipped().isEmpty())
         server.shutdown()
     }
+
+    @Test
+    fun cancelledWhileRedirectRefusedMutatesNothing() = runBlocking {
+        // Same barrier, redirect path: the refusal answer (here a cross-origin redirect)
+        // may land after the cancel; the cancel must still win before the redirect notice
+        // or the redirectNotified flag touch the queue.
+        val server = MockWebServer()
+        val gate = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                started.countDown()
+                gate.await()
+                return MockResponse().setResponseCode(302)
+                    .setHeader("Location", "https://evil.example/elsewhere")
+            }
+        }
+        server.start()
+        signIn(server)
+        QueueStore(ctx).enqueueShare("https://youtu.be/one", "One")
+
+        val w = worker()
+        val job = async(kotlinx.coroutines.Dispatchers.Default) { w.doWork() }
+        assertTrue("the request reached the server before the cancel", started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        job.cancel()
+        gate.countDown()
+        job.join()
+        var cancelled = false
+        try { job.await() } catch (e: kotlinx.coroutines.CancellationException) { cancelled = true }
+        assertTrue("a cancelled run surfaces CancellationException - any other outcome fails here", cancelled)
+        assertEquals("no second request slipped in while the cancel landed", 1, server.requestCount)
+        val q = QueueStore(ctx).shareQueue()
+        assertEquals("queue untouched by the cancelled run", 1, q.size)
+        assertFalse("no redirectNotified flag from the cancelled run", q[0].redirectNotified)
+        assertEquals(0, q[0].attempts)
+        assertEquals(0L, q[0].nextRetryAt)
+        assertTrue(QueueStore(ctx).skipped().isEmpty())
+        server.shutdown()
+    }
 }

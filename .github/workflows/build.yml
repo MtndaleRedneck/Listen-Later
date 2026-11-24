@@ -44,7 +44,7 @@ jobs:
           key: robolectric-${{ hashFiles('**/build.gradle.kts') }}
 
       - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest || ./gradlew --no-daemon testDebugUnitTest
+        run: ./gradlew --no-daemon testDebugUnitTest || { echo "::warning::the first unit-test run failed and this green is a retry - read the first failure in the log above"; ./gradlew --no-daemon testDebugUnitTest; }
 
       - name: Build APKs
         env:
