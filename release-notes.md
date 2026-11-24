@@ -1,3 +1,8 @@
+## What's new in 1.6.4
+
+- Rotating the phone or reopening the app no longer interrupts a video that was still being sent to your server. The send keeps going.
+- A cancelled send can no longer be marked as handled by a late answer from the server.
+
 ## What's new in 1.6.3
 
 - Security: the app no longer follows redirects to a different server, so your sign-in and session can never be forwarded anywhere but your own server.
