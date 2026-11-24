@@ -39,8 +39,10 @@ adb shell am start -a android.intent.action.SEND -t text/plain \
   --es android.intent.extra.SUBJECT "smoke" -n com.listenlater/.ShareActivity 2>&1 | tee /tmp/rsmoke-pl.log
 sleep 8
 adb shell pidof com.listenlater >/dev/null 2>&1 || { echo "RELEASE SMOKE FAIL: app died on playlist rejection"; exit 1; }
+# AppSettings in the dump always names the package (the channel is created at
+# boot); only a NotificationRecord is a real posted notification.
 adb shell dumpsys notification > /tmp/rsmoke-notif-pl.txt
-if grep -q "com.listenlater" /tmp/rsmoke-notif-pl.txt; then
+if grep "NotificationRecord" /tmp/rsmoke-notif-pl.txt | grep -q "pkg=com.listenlater"; then
   echo "RELEASE SMOKE FAIL: notification posted for a rejected playlist share"; exit 1
 fi
 
@@ -53,7 +55,7 @@ if grep -qi "error" /tmp/rsmoke-share.log; then echo "RELEASE SMOKE FAIL: share 
 sleep 15
 adb shell pidof com.listenlater >/dev/null 2>&1 || { echo "RELEASE SMOKE FAIL: app died during share intake"; exit 1; }
 adb shell dumpsys notification > /tmp/rsmoke-notif.txt
-if ! grep -q "com.listenlater" /tmp/rsmoke-notif.txt; then
+if ! grep "NotificationRecord" /tmp/rsmoke-notif.txt | grep -q "pkg=com.listenlater"; then
   echo "RELEASE SMOKE FAIL: sign-in nudge never posted - share->queue->worker->credstore->notifier chain broken"; exit 1
 fi
 if ! grep -q "Sign in again to keep sending videos." /tmp/rsmoke-notif.txt; then
