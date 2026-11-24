@@ -18,7 +18,8 @@ shot() {
     adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
     if adb shell cat /sdcard/ui.xml 2>/dev/null | grep -q "Listen Later"; then break; fi
   done
-  sleep 2
+  # Proof shots must not be covered by a launch toast; toasts clear within ~4s.
+  sleep 6
   adb exec-out screencap -p > $OUT/$1.png
 }
 # tap_text <visible text or content-desc>: find its bounds in the UI dump and tap its center.

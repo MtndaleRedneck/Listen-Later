@@ -137,11 +137,24 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
         // Status pill centered in the free space between the name and the gear tile;
         // bounded so a long status wraps instead of competing with the title.
         BoxWithConstraints(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            // "Connected" is one word: a hard width squeeze wraps it mid-word ("Connect/ed").
+            // Keep it on a single unwrapped line; when the free header space is tight
+            // (narrow widths, large font scales) switch to the compact pill instead of
+            // shrinking or truncating the word. Offline keeps the full message, wrapping
+            // at word boundaries within the free space.
+            val compact = maxWidth < 112.dp
             Surface(color = NavBg, shape = RoundedCornerShape(50), modifier = Modifier.widthIn(max = maxWidth)) {
-                Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(color = if (connected) Sage else Muted, shape = RoundedCornerShape(50), modifier = Modifier.width(9.dp).height(9.dp)) {}
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (connected) "Connected" else "Can't reach server", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                Row(
+                    Modifier.padding(horizontal = if (compact) 10.dp else 14.dp, vertical = if (compact) 6.dp else 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(color = if (connected) Sage else Muted, shape = RoundedCornerShape(50), modifier = Modifier.width(if (compact) 7.dp else 9.dp).height(if (compact) 7.dp else 9.dp)) {}
+                    Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
+                    if (connected) {
+                        Text("Connected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false)
+                    } else {
+                        Text("Can't reach server", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                    }
                 }
             }
         }
@@ -481,8 +494,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 Column(Modifier.weight(1f).padding(end = 10.dp)) {
                                     Text(
                                         q.title.ifEmpty { "Video waiting to send" },
-                                        fontSize = 15.sp, color = TextC,
-                                        maxLines = 2, overflow = TextOverflow.Ellipsis
+                                        fontSize = 15.sp, color = TextC
                                     )
                                     if (q.title.isEmpty() && id != null) Text(id, fontSize = 12.sp, color = Muted)
                                 }
@@ -497,8 +509,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                     },
                                     fontSize = 13.sp, color = Muted,
                                     // A long status wraps within its own bounded column instead
-                                    // of squeezing the title into uselessness.
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                    // of squeezing the title into uselessness; no ellipsis -
+                                    // the full reason stays readable at any font scale.
                                     textAlign = TextAlign.End,
                                     modifier = Modifier.widthIn(max = 120.dp)
                                 )
@@ -513,11 +525,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 Column(Modifier.weight(1f).padding(end = 10.dp)) {
                                     Text(
                                         sk.title.ifEmpty { "Video ${VideoUrl.extractVideoId(sk.url) ?: "link"}" },
-                                        fontSize = 15.sp, color = TextC,
-                                        maxLines = 2, overflow = TextOverflow.Ellipsis
+                                        fontSize = 15.sp, color = TextC
                                     )
                                     if (sk.reason.isNotEmpty()) {
-                                        Text(sk.reason, fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(sk.reason, fontSize = 12.sp, color = Muted)
                                     }
                                 }
                                 Column(horizontalAlignment = Alignment.End) {

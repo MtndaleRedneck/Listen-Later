@@ -158,7 +158,7 @@ fun SettingsScreen(
                     color = OnSage, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    if (feedAvailable) "Paste into your podcast app" else "No feed yet - share a video to create it",
+                    if (feedAvailable) "Paste into your podcast app" else "No feed link available yet",
                     color = OnSage.copy(alpha = 0.85f), fontSize = 12.sp, textAlign = TextAlign.Center,
                 )
             }
