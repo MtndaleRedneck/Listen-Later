@@ -17,9 +17,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Write access: this job publishes the release.
+    # Read-only: branch-dispatched runs execute branch-controlled Gradle, so the
+    # signing secrets and the write token stay out of this job (ChatGPT review).
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +29,11 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
+      - name: Android SDK 37
+        run: |
+          if ! ls "$ANDROID_HOME/platforms" | grep -q '^android-37'; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0" >/dev/null
+          fi
 
       - name: "Guard: update pop-up never scrolls sideways"
         run: |
@@ -46,18 +52,42 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest || { echo "::warning::the first unit-test run failed and this green is a retry - read the first failure in the log above"; ./gradlew --no-daemon testDebugUnitTest; }
 
-      - name: Build APKs
+      # The real keystore is decoded ONLY on a manual publish run from main, so
+      # branch-controlled builds never see the signing secrets. Every other run
+      # signs with a throwaway keystore: the release APK stays installable for
+      # release-smoke, and the throwaway signature never ships (publish reuses
+      # only the APK from a main publish run).
+      - name: Decode release keystore (publish run only)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: listenlater
         run: |
           if [ -z "$KEYSTORE_B64" ]; then echo "No signing secrets set"; exit 1; fi
-          trap 'rm -f "$RUNNER_TEMP/release.keystore"' EXIT
+          # No cleanup trap here: a step-scoped EXIT trap would delete the file
+          # before the Build APKs step reads it. Cleanup lives in Build APKs.
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-          export KEYSTORE_FILE="$RUNNER_TEMP/release.keystore"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+      - name: Build APKs
+        env:
+          KEY_ALIAS: listenlater
+        run: |
+          # Keystore cleanup survives a Gradle failure (step-scoped trap).
+          trap 'rm -f "$RUNNER_TEMP/release.keystore" "$RUNNER_TEMP/ci-throwaway.keystore"' EXIT
+          if [ -n "$KEYSTORE_FILE" ] && [ ! -f "$KEYSTORE_FILE" ]; then
+            echo "KEYSTORE_FILE is set but the file is missing: $KEYSTORE_FILE" >&2
+            exit 1
+          fi
+          if [ -z "$KEYSTORE_FILE" ]; then
+            keytool -genkeypair -v -keystore "$RUNNER_TEMP/ci-throwaway.keystore" \
+              -alias listenlater -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass ci-throwaway -keypass ci-throwaway \
+              -dname "CN=CI Throwaway" 2>/dev/null
+            export KEYSTORE_FILE="$RUNNER_TEMP/ci-throwaway.keystore"
+            export KEYSTORE_PASSWORD=ci-throwaway
+          fi
           ./gradlew --no-daemon assembleRelease assembleDebug
-          rm -f "$RUNNER_TEMP/release.keystore"
 
       - name: Name the APK
         run: |
@@ -71,16 +101,33 @@ jobs:
           name: ListenLater-apk
           path: ListenLater-*.apk
 
-      # Releases are published only on manual dispatch, after review sign-off.
-      # An existing release is never replaced; bump versionName for a new one.
+  # Releases are published only on manual dispatch, after review sign-off.
+  # An existing release is never replaced; bump versionName for a new one.
+  # The write token lives only in this main-only publish job (ChatGPT review).
+  publish:
+    # Every release-correctness job must be green BEFORE the release is
+    # created (I2 review): the publish is the last job, not a parallel one.
+    # upgrade-smoke is publish-dispatch-gated like this job, so on a real
+    # publish run all four needs have run; on any other run this job's own
+    # if is false and it never runs.
+    needs: [build, release-smoke, migration-test, upgrade-smoke]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ListenLater-apk
       - name: Publish release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           # Pinned cover-art hash: the review package names this value. Update it in the
           # same commit whenever docs/podcast-cover-3000.png changes.
           EXPECTED_COVER_SHA256: 67a5ffa246860845f300326a594f39d780a03bf0bb545a1bff39fbf37c587b59
         run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           TAG=v$VERSION
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists. Bump versionName to publish a new release."
@@ -101,6 +148,33 @@ jobs:
               --notes "Listen Later $TAG."
           fi
 
+  # In-place upgrade acceptance on the minified build (Gemini review): published
+  # 1.6.4 (vc13) with a queued share upgraded to the new vc14 APK. Real release
+  # signatures only, so it can run solely on a main publish run - branch builds
+  # carry the throwaway CI key and install -r would refuse the downgrade.
+  upgrade-smoke:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ListenLater-apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: ./scripts/upgrade-smoke.sh
+
   # The migration-gate instrumented test runs on a real emulator: the approved
   # mid-migration carryover proof must actually run and pass, not just compile.
   migration-test:
@@ -113,6 +187,11 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
+      - name: Android SDK 37
+        run: |
+          if ! ls "$ANDROID_HOME/platforms" | grep -q '^android-37'; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0" >/dev/null
+          fi
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -126,25 +205,63 @@ jobs:
           profile: pixel_6
           script: ./gradlew --no-daemon connectedDebugAndroidTest && adb install -r app/build/outputs/apk/debug/app-debug.apk && ./scripts/share-smoke.sh
 
+  # Minified release APK on a real emulator: boot, credential-store init, share
+  # intake and worker scheduling must survive R8 + resource shrinking. Logcat-based
+  # proof (a release build is not debuggable, so run-as checks are impossible here).
+  release-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/download-artifact@v4
+        with:
+          name: ListenLater-apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: ./scripts/release-smoke.sh
+
   # Real screenshots from an emulator on every main push; used for review before release.
   screenshots:
     needs: build
     runs-on: ubuntu-latest
-    # Write access: this job commits the new screenshots.
+    # Read-only: this job runs branch-controlled scripts, so the write token for
+    # the screenshot commit lives in the separate main-only commit-screenshots
+    # job below (ChatGPT review).
     permissions:
-      contents: write
+      contents: read
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
+      - name: Android SDK 37
+        run: |
+          if ! ls "$ANDROID_HOME/platforms" | grep -q '^android-37'; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0" >/dev/null
+          fi
       - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+        # Retry once: a cold cache plus a plugin-portal flake fails plugin
+        # resolution transiently (same pattern as the unit-test retry above).
+        run: ./gradlew --no-daemon assembleDebug || ./gradlew --no-daemon assembleDebug
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -158,6 +275,27 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: ./scripts/shots.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          # Artifact names forbid '/'; branch names like tmp/modernization-1124 have one.
+          name: screenshots-${{ github.run_id }}
+          path: |
+            docs/screenshots
+            docs/main.png
+          if-no-files-found: ignore
+  # The write token for committing screenshots exists only here, on main.
+  commit-screenshots:
+    needs: screenshots
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: screenshots-${{ github.run_id }}
+          path: docs
       - name: Commit screenshots
         run: |
           git config user.name "MtndaleRedneck"
@@ -183,6 +321,11 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
+      - name: Android SDK 37
+        run: |
+          if ! ls "$ANDROID_HOME/platforms" | grep -q '^android-37'; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0" >/dev/null
+          fi
       - uses: actions/download-artifact@v4
         with:
           name: ListenLater-apk
