@@ -16,6 +16,13 @@ curl -sL -o /tmp/old-1.6.4.apk \
 
 adb install /tmp/old-1.6.4.apk || { echo "UPGRADE SMOKE FAIL: 1.6.4 install failed"; exit 1; }
 
+# Grant up front: MainActivity asks for POST_NOTIFICATIONS on its first-ever launch,
+# and in this flow MainActivity first runs AFTER the upgrade (the share went to the
+# NoDisplay ShareActivity). Without the grant the system permission dialog covers the
+# sign-in screen and the waiting-copy assert fails on the dialog, not on queue loss.
+# A real upgrading user granted it long ago, and grants survive install -r.
+adb shell pm grant com.listenlater android.permission.POST_NOTIFICATIONS
+
 # Queue a share on 1.6.4 with no session (unique valid-shaped id).
 SMOKE_ID="upg$(date +%s%N | tail -c 9)"
 adb shell am start -a android.intent.action.SEND -t text/plain \
@@ -39,7 +46,14 @@ PID=$(adb shell pidof com.listenlater | tr -d '\r\n')
 
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
 if ! adb shell cat /sdcard/ui.xml 2>/dev/null | grep -q "1 video is waiting"; then
-  echo "UPGRADE SMOKE FAIL: queued share lost across vc13 -> vc14 upgrade"; exit 1
+  # Decisive diagnostics: show what IS on screen and what the app logged, so a
+  # failure separates real queue loss from a covered/obscured assertion.
+  echo "UPGRADE SMOKE FAIL: queued share lost across vc13 -> vc14 upgrade"
+  echo "--- ui.xml (on-screen hierarchy) ---"
+  adb shell cat /sdcard/ui.xml 2>/dev/null | head -c 4000
+  echo "--- app logcat since relaunch ---"
+  adb logcat -d ${PID:+--pid=$PID} | tail -60
+  exit 1
 fi
 
 adb logcat -d --pid="$PID" > /tmp/usmoke-logcat.txt
