@@ -204,7 +204,8 @@ jobs:
           script: ./scripts/shots.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: screenshots-${{ github.ref_name }}
+          # Artifact names forbid '/'; branch names like tmp/modernization-1124 have one.
+          name: screenshots-${{ github.run_id }}
           path: |
             docs/screenshots
             docs/main.png
