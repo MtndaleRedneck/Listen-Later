@@ -129,21 +129,28 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 18.dp)) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
-        Text("Listen Later", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextC)
-        // Status pill centered in the free space between the name and the gear tile.
-        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            Surface(color = NavBg, shape = RoundedCornerShape(50)) {
+        Text("Listen Later", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextC, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Status pill centered in the free space between the name and the gear tile;
+        // bounded so a long status wraps instead of competing with the title.
+        BoxWithConstraints(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Surface(color = NavBg, shape = RoundedCornerShape(50), modifier = Modifier.widthIn(max = maxWidth)) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Surface(color = if (connected) Sage else Muted, shape = RoundedCornerShape(50), modifier = Modifier.width(9.dp).height(9.dp)) {}
                     Spacer(Modifier.width(8.dp))
-                    Text(if (connected) "Connected" else "Can't reach server", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextC)
+                    Text(if (connected) "Connected" else "Can't reach server", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                 }
             }
         }
         Spacer(Modifier.width(10.dp))
-        Surface(color = NavBg, shape = RoundedCornerShape(11.dp), modifier = Modifier.size(40.dp)) {
-            IconButton(onClick = onSettings) {
-                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Sage)
+        // 40dp visual tile inside a real 48dp touch target.
+        Box(
+            Modifier.size(48.dp).clip(RoundedCornerShape(11.dp))
+                .semantics { contentDescription = "Settings" }
+                .clickable(onClickLabel = "Open settings", role = Role.Button, onClick = onSettings),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(color = NavBg, shape = RoundedCornerShape(11.dp), modifier = Modifier.size(40.dp)) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Settings, contentDescription = null, tint = Sage) }
             }
         }
     }
@@ -400,6 +407,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             onUpdateFound = { info -> updateUi = UpdateUi.Offer(info) },
             username = store.username ?: "",
             serverUrl = store.server,
+            feedAvailable = feedUrl != null,
             onCopyFeedLink = { copyFeedLink() },
             onSignOut = { signOutAsk = true },
         )

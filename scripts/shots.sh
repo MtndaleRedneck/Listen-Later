@@ -82,6 +82,18 @@ adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez queuesta
 sleep 6
 adb shell input swipe 720 2000 720 900; sleep 1
 adb exec-out screencap -p > $OUT/v16-scrolled.png
+# Responsive check: small width + large font (review risk: fixed heights, wide rows).
+adb shell wm size 1080x2280
+adb shell wm density 440
+adb shell settings put system font_scale 1.3
+shot v17-responsive-status --ez demo true --ez queuestates true
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5
+tap_text "Settings"; sleep 2
+adb exec-out screencap -p > $OUT/v17-responsive-settings.png
+adb shell settings put system font_scale 1.0
+adb shell wm size reset
+adb shell wm density reset
 # v17: an expired session on a cold start lands on sign-in - the status screen is only
 # restored when needsLogin is clear, and the observable StateFlow keeps sign-in in place.
 # (The in-place drop mid-session is the same code path; captcha needs a live server and

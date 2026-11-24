@@ -15,7 +15,7 @@ val Muted = Color(0xFF9696A0)
 val Sage = Color(0xFF6F9C7E)
 val SageL = Color(0xFF9CC4A6)
 val OnSage = Color(0xFF0E0E10)
-val Red = Color(0xFFE5484D)
+val Red = Color(0xFFF46F74)
 
 /** Approved redesign surfaces: subtle vertical ombré on cards and filled tiles. */
 val CardGradient: Brush = Brush.verticalGradient(listOf(Card2, Card))
