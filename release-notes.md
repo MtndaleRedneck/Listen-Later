@@ -1,7 +1,10 @@
 ## What's new in 1.6.4
 
-- Rotating the phone or reopening the app no longer interrupts a video that was still being sent to your server. The send keeps going.
-- A cancelled send can no longer be marked as handled by a late answer from the server.
+November 24, 2026. Share-send reliability fixes.
+
+Fixed:
+- Rotating the phone or reopening the app no longer interrupts a video that was still being sent to your server. The send keeps going. ([2c2e952](https://github.com/MtndaleRedneck/Listen-Later/commit/2c2e95221b1be15a2e170947233aecb71f3a7c72))
+- A cancelled send can no longer be marked as handled by a late answer from the server. ([2c2e952](https://github.com/MtndaleRedneck/Listen-Later/commit/2c2e95221b1be15a2e170947233aecb71f3a7c72))
 
 ## What's new in 1.6.3
 
