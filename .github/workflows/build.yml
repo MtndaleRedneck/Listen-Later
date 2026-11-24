@@ -31,7 +31,7 @@ jobs:
       - name: Android SDK 37
         run: |
           if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-9862592_latest.zip
             unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
             yes | /tmp/cmdtools/cmdline-tools/bin/sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-37" "build-tools;36.0.0" >/dev/null
           fi
@@ -123,7 +123,7 @@ jobs:
       - name: Android SDK 37
         run: |
           if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-9862592_latest.zip
             unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
             yes | /tmp/cmdtools/cmdline-tools/bin/sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-37" "build-tools;36.0.0" >/dev/null
           fi
@@ -189,7 +189,7 @@ jobs:
       - name: Android SDK 37
         run: |
           if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-9862592_latest.zip
             unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
             yes | /tmp/cmdtools/cmdline-tools/bin/sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-37" "build-tools;36.0.0" >/dev/null
           fi
@@ -244,7 +244,7 @@ jobs:
       - name: Android SDK 37
         run: |
           if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
-            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+            curl -sS -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-9862592_latest.zip
             unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
             yes | /tmp/cmdtools/cmdline-tools/bin/sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-37" "build-tools;36.0.0" >/dev/null
           fi
