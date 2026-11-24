@@ -68,8 +68,15 @@ echo "$REC" | grep -q "id=1 " || echo "$REC" | grep -q "id=1$" || {
 
 # 4. Logcat verdict, OUR process only: the shared buffer carries system-app
 # noise (e.g. Settings' SliceDataConverter ClassNotFoundException warnings)
-# that has nothing to do with the build under test.
-adb logcat -d --pid="$PID" > /tmp/rsmoke-logcat.txt
+# that has nothing to do with the build under test. Re-capture the PID: if the
+# process restarted during the share (a crash + relaunch), the boot PID alone
+# would miss the new process's crash - dump both when they differ.
+PID2=$(adb shell pidof com.listenlater | tr -d '\r\n')
+if [ -n "$PID2" ] && [ "$PID2" != "$PID" ]; then
+  { adb logcat -d --pid="$PID"; adb logcat -d --pid="$PID2"; } > /tmp/rsmoke-logcat.txt
+else
+  adb logcat -d --pid="$PID" > /tmp/rsmoke-logcat.txt
+fi
 if grep -E "FATAL EXCEPTION|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|VerifyError|ExceptionInInitializerError|GeneralSecurityException|KeyStoreException" /tmp/rsmoke-logcat.txt; then
   echo "RELEASE SMOKE FAIL: crash/class-loading/security failure in logcat"; exit 1
 fi
