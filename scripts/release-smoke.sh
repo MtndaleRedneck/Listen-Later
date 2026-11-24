@@ -31,7 +31,8 @@ adb logcat -c
 adb shell am start -n com.listenlater/.MainActivity 2>&1 | tee /tmp/rsmoke-start.log
 if grep -qi "error" /tmp/rsmoke-start.log; then echo "RELEASE SMOKE FAIL: launch error"; exit 1; fi
 sleep 12
-adb shell pidof com.listenlater >/dev/null 2>&1 || { echo "RELEASE SMOKE FAIL: app died after launch"; exit 1; }
+PID=$(adb shell pidof com.listenlater | tr -d '\r\n')
+[ -n "$PID" ] || { echo "RELEASE SMOKE FAIL: app died after launch"; exit 1; }
 
 # 2. Playlist share must be REJECTED (validation failure branch, no queue write).
 adb shell am start -a android.intent.action.SEND -t text/plain \
@@ -65,8 +66,10 @@ echo "$REC"
 echo "$REC" | grep -q "id=1 " || echo "$REC" | grep -q "id=1$" || {
   echo "RELEASE SMOKE FAIL: posted notification is not the sign-in nudge (id 1)"; exit 1; }
 
-# 4. Logcat verdict: no crash, class-loading, or security-crypto failure.
-adb logcat -d > /tmp/rsmoke-logcat.txt
+# 4. Logcat verdict, OUR process only: the shared buffer carries system-app
+# noise (e.g. Settings' SliceDataConverter ClassNotFoundException warnings)
+# that has nothing to do with the build under test.
+adb logcat -d --pid="$PID" > /tmp/rsmoke-logcat.txt
 if grep -E "FATAL EXCEPTION|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|VerifyError|ExceptionInInitializerError|GeneralSecurityException|KeyStoreException" /tmp/rsmoke-logcat.txt; then
   echo "RELEASE SMOKE FAIL: crash/class-loading/security failure in logcat"; exit 1
 fi
