@@ -1,3 +1,15 @@
+## What's new in 1.8.0
+
+November 24, 2026. A fresh look for the home and Settings screens, and a new notification icon drawn from the app's real logo.
+
+New:
+- New notification icon: the Listen Later microphone with a small clock, drawn from the app's real logo.
+
+Improved:
+- Refreshed home screen: the connection status sits in a pill in the top bar, list cards have a soft gradient, and rows show full video titles and error details instead of cutting them off.
+- Refreshed Settings: clearer account controls with sign out and a tappable server link, plus a prominent Copy feed link button.
+- Clearer wording when the feed link isn't available yet.
+
 ## What's new in 1.7.0
 
 November 24, 2026. An under-the-hood update: the app is rebuilt on current Android foundations and is now 87% smaller, with everything you use unchanged.
