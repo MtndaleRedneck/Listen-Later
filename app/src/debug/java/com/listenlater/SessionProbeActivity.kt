@@ -17,14 +17,17 @@ class SessionProbeActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val out = File(filesDir, "session_probe.txt")
+        // The harness passes a unique-per-run id; the result is PREFIXED with it so
+        // a stale file from an earlier run can never be taken as a fresh answer.
+        val runId = intent.getStringExtra("run_id") ?: "NO_RUN_ID"
         try {
             val store = CredStore(applicationContext)
             val token = if (store.token.isNullOrEmpty()) "TOKEN_ABSENT" else "TOKEN_PRESENT"
             val server = if (store.server.isNullOrEmpty()) "SERVER_ABSENT" else "SERVER_PRESENT"
-            out.writeText(token + " " + server)
+            out.writeText(runId + " " + token + " " + server)
         } catch (e: Exception) {
             // An unreadable store is NOT proof of absence.
-            out.writeText("UNREADABLE:" + e.javaClass.simpleName)
+            out.writeText(runId + " UNREADABLE:" + e.javaClass.simpleName)
         }
         finish()
     }

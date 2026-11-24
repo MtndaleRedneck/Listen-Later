@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-        <!-- CI-only probe (debug builds only; merged out of release). Not exported:
-             the platform shell can still start it, other apps cannot. -->
-        <activity android:name=".SessionProbeActivity" android:exported="false" />
+        <!-- CI-only probe (debug builds only; merged out of release). Exported so
+             the CI shell can start it: uid 2000 CANNOT start non-exported components
+             on API 34 (run 45315527334: Permission Denial pid=6070 uid=2000). The
+             probe writes only presence booleans prefixed with the harness's run id
+             and takes no other input; the CI emulator carries no user data. -->
+        <activity android:name=".SessionProbeActivity" android:exported="true" />
     </application>
 </manifest>
