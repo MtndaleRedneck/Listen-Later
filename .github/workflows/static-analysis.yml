@@ -8,6 +8,8 @@
 name: Static Analysis (lint/detekt)
 
 on:
+  push:
+    branches: [instinct1/static-analysis]   # TEMP test trigger; delivered kit has PR/dispatch/weekly only
   pull_request:
   workflow_dispatch:
   schedule:
