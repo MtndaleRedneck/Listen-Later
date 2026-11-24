@@ -49,24 +49,33 @@ PID=$(adb shell pidof com.listenlater | tr -d '\r\n')
 # run while the app logcat stayed clean). Those are environment, not queue
 # state, so dismiss them, re-focus the app, and re-read. An external ANR is
 # answered with its "Wait" button (parsed from the dump) so nothing is killed.
-# The app's OWN ANR or crash is a defect and must never be dismissed into a
-# pass: it breaks the loop into the failure diagnostics immediately, as does
-# the app process dying mid-assert (a crash-restart would fake a later pass).
+# The app's OWN failure is a defect and must never be dismissed into a pass,
+# so all app-failure detection runs BEFORE the waiting-text check: an app ANR
+# or crash dialog, a process restart (PID change - an unnoticed kill/restart
+# would fake a later pass), and app ANR/native-crash evidence in logcat since
+# relaunch each break straight into the failure diagnostics.
 PASS=0
 UI=
 for i in $(seq 1 15); do
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   UI=$(adb shell cat /sdcard/ui.xml 2>/dev/null)
-  if echo "$UI" | grep -q "1 video is waiting"; then PASS=1; break; fi
   if echo "$UI" | grep -q "Listen Later isn't responding\|Listen Later keeps stopping"; then
     echo "upgrade-smoke: the APP itself ANR'd/crashed during the assert - not dismissible"
     break
   fi
   CUR=$(adb shell pidof com.listenlater | tr -d '\r\n')
-  if [ -z "$CUR" ]; then
-    echo "upgrade-smoke: app process died during the assert"
+  if [ "$CUR" != "$PID" ]; then
+    echo "upgrade-smoke: app process changed ($PID -> ${CUR:-none}) during the assert - restart"
     break
   fi
+  LC=$(adb logcat -d)
+  if echo "$LC" | grep -q "ANR in com.listenlater" \
+     || echo "$LC" | grep -A8 "FATAL EXCEPTION" | grep -q "Process: com.listenlater" \
+     || echo "$LC" | grep "Fatal signal" | grep -q "com.listenlater"; then
+    echo "upgrade-smoke: app ANR/crash evidence in logcat during the assert"
+    break
+  fi
+  if echo "$UI" | grep -q "1 video is waiting"; then PASS=1; break; fi
   if echo "$UI" | grep -q "isn't responding"; then
     B=$(echo "$UI" | grep -o 'aerr_wait[^/]*' | grep -o 'bounds="[^"]*"' | head -1)
     if [ -n "$B" ]; then
@@ -87,7 +96,9 @@ if [ "$PASS" != 1 ]; then
   echo "--- ui.xml (on-screen hierarchy) ---"
   echo "$UI" | head -c 4000
   echo "--- app logcat since relaunch ---"
-  adb logcat -d ${PID:+--pid=$PID} | tail -60
+  # Unfiltered on purpose: after a restart the new process is not $PID, and a
+  # filtered dump would hide exactly the crash evidence this failure needs.
+  adb logcat -d | tail -80
   exit 1
 fi
 
