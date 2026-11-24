@@ -10,11 +10,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Share-and-kill persistence: after every process-lived object is dropped (the
- * state a process kill leaves), the queue and the session are re-read from disk
- * intact. The adb-driven half (a real force-stop and relaunch) is in
- * scripts/share-smoke.sh; this covers the in-app re-read path on a real
- * encrypted store.
+ * Bounded persistence check: only CredStore's process-lived static is dropped, so
+ * the SESSION is genuinely re-read from the real encrypted file; the queue comes
+ * back through the framework's same-process SharedPreferences cache, NOT a fresh
+ * disk read. This test alone does NOT prove process-kill persistence - that
+ * evidence is the adb force-stop + cold relaunch half of scripts/share-smoke.sh,
+ * which runs on the CI emulator.
  */
 @RunWith(AndroidJUnit4::class)
 class ShareKillPersistenceDeviceTest {

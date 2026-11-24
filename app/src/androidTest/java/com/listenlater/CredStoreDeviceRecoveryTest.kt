@@ -17,8 +17,15 @@ import java.io.File
  * The real-Keystore version of CredStoreRecoveryTest: an emulator has a real
  * AndroidKeyStore and real Tink decryption, so the unreadable-login recovery runs
  * the exact production crypto path the unit tests can only simulate. The login
- * file is made unreadable by replacing its keyset entries with parseable but
- * invalid base64 - the same failure a genuinely undecryptable file produces.
+ * file is made unreadable by replacing its keyset entries with strings that are
+ * not valid hex: tink-android 1.8.0's readKeysetFromPrefs then throws a
+ * CharConversionException out of EncryptedSharedPreferences.create, which is the
+ * same create() failure an undecryptable keyset (lost/unusable master key)
+ * produces, so the production fallback runs for real.
+ *
+ * Every byte-for-byte snapshot in this class is taken AFTER the corruption: the
+ * recovery preserves the UNREADABLE bytes it found, and corruptKeysets() ends in
+ * a synchronous commit() so the snapshot cannot race the login's async write.
  */
 @RunWith(AndroidJUnit4::class)
 class CredStoreDeviceRecoveryTest {
@@ -40,9 +47,10 @@ class CredStoreDeviceRecoveryTest {
     @Before fun setUp() = clearAll()
     @After fun tearDown() = clearAll()
 
-    /** Replace the (plaintext-named) keyset entries with parseable-but-invalid
-     * base64: the next EncryptedSharedPreferences.create fails its keyset read,
-     * exactly like an undecryptable login file. */
+    /** Replace the (plaintext-named) keyset entries with invalid hex: the next
+     * EncryptedSharedPreferences.create fails its keyset read with a
+     * CharConversionException, exactly like an undecryptable login file. Ends in
+     * commit(), so the disk state is settled when this returns. */
     private fun corruptKeysets() {
         val edit = raw().edit()
         raw().all.keys
@@ -64,8 +72,8 @@ class CredStoreDeviceRecoveryTest {
     @Test
     fun corruptKeysetsFallBackToMemoryAndPreserveEveryByte() {
         CredStore(ctx).markLoggedIn("http://srv", "u", "T1", "p", false)
-        val original = credsFile().readBytes()
         corruptKeysets()
+        val original = credsFile().readBytes() // the unreadable bytes recovery must preserve
 
         CredStore.resetForTests()
         val store = CredStore(ctx)
@@ -76,8 +84,8 @@ class CredStoreDeviceRecoveryTest {
     @Test
     fun freshLoginMovesTheOriginalAsideAndTheReplacementReadsBack() {
         CredStore(ctx).markLoggedIn("http://srv", "u", "T1", "p", false)
-        val original = credsFile().readBytes()
         corruptKeysets()
+        val original = credsFile().readBytes() // the unreadable bytes recovery must set aside
         CredStore.resetForTests()
         val store = CredStore(ctx)
         assertNull(store.token)
@@ -101,15 +109,15 @@ class CredStoreDeviceRecoveryTest {
     @Test
     fun aPreservedAsideIsNeverOverwrittenByALaterRecovery() {
         CredStore(ctx).markLoggedIn("http://srv", "u", "T1", "p", false)
-        val generationOne = credsFile().readBytes()
         corruptKeysets()
+        val generationOne = credsFile().readBytes() // the unreadable bytes of generation one
         CredStore.resetForTests()
         CredStore(ctx).markLoggedIn("http://srv", "u", "T2", "p", false)
         assertArrayEquals(generationOne, File(dir, "creds.unreadable.xml").readBytes())
 
         // The replacement becomes unreadable too: its recovery must not touch generation one.
-        val generationTwo = credsFile().readBytes()
         corruptKeysets()
+        val generationTwo = credsFile().readBytes() // the unreadable bytes of generation two
         CredStore.resetForTests()
         CredStore(ctx).markLoggedIn("http://srv", "u", "T3", "p", false)
 
@@ -122,8 +130,8 @@ class CredStoreDeviceRecoveryTest {
     @Test
     fun aFailedRecreateRollsTheOriginalBytesBack() {
         CredStore(ctx).markLoggedIn("http://srv", "u", "T1", "p", false)
-        val original = credsFile().readBytes()
         corruptKeysets()
+        val original = credsFile().readBytes() // the unreadable bytes recovery must set aside
         CredStore.resetForTests()
         val store = CredStore(ctx)
         assertNull(store.token)
