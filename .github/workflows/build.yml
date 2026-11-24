@@ -148,6 +148,9 @@ jobs:
             found { print }
           ' release-notes.md > /tmp/notes.md
           [ -s /tmp/notes.md ] || { echo "release-notes.md section for $VERSION is empty"; exit 1; }
+          # A section must carry at least one nonblank BODY line below its heading
+          # (the awk output includes the heading, so -s alone permits heading-only).
+          tail -n +2 /tmp/notes.md | grep -q '[^[:space:]]' || { echo "release-notes.md section for $VERSION has no body text"; exit 1; }
           # Rule guard: public notes carry no links and no commit hashes. A bare
           # hash must look like one - digits AND a-f letters together - so plain
           # numbers (1000000) and ordinary all-hex-letter words (defaced) pass.
