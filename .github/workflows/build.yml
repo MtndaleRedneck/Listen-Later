@@ -135,12 +135,19 @@ jobs:
           fi
           # Publish ONLY this version's section: release-notes.md keeps full history,
           # but old history in the public notes is a rules violation (v1.7.0 incident).
-          awk -v v="$VERSION" '
-            $0 ~ "^## What'\''s new in " v "$" {found=1; print; next}
-            found && /^## / {exit}
-            found {print}
+          # Exact whole-line string match (a version is not a regex: 1.7.0 must not
+          # match 1x7y0 or 1.7). The count scans the WHOLE file first so a duplicate
+          # heading anywhere fails loudly instead of silently using the first copy;
+          # a missing section fails; extraction then stops at the next heading.
+          COUNT=$(grep -cFx "## What's new in $VERSION" release-notes.md)
+          if [ "$COUNT" -eq 0 ]; then echo "release-notes.md has no section for $VERSION"; exit 1; fi
+          if [ "$COUNT" -gt 1 ]; then echo "duplicate section heading for $VERSION in release-notes.md"; exit 1; fi
+          awk -v expected="## What's new in $VERSION" '
+            $0 == expected { found=1; print; next }
+            found && /^## / { exit }
+            found { print }
           ' release-notes.md > /tmp/notes.md
-          [ -s /tmp/notes.md ] || { echo "release-notes.md has no section for $VERSION"; exit 1; }
+          [ -s /tmp/notes.md ] || { echo "release-notes.md section for $VERSION is empty"; exit 1; }
           # Rule guard: public notes carry no links and no commit hashes. A bare
           # hash must look like one - digits AND a-f letters together - so plain
           # numbers (1000000) and ordinary all-hex-letter words (defaced) pass.
