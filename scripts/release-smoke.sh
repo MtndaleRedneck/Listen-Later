@@ -55,12 +55,15 @@ if grep -qi "error" /tmp/rsmoke-share.log; then echo "RELEASE SMOKE FAIL: share 
 sleep 15
 adb shell pidof com.listenlater >/dev/null 2>&1 || { echo "RELEASE SMOKE FAIL: app died during share intake"; exit 1; }
 adb shell dumpsys notification > /tmp/rsmoke-notif.txt
-if ! grep "NotificationRecord" /tmp/rsmoke-notif.txt | grep -q "pkg=com.listenlater"; then
+REC=$(grep "NotificationRecord" /tmp/rsmoke-notif.txt | grep "pkg=com.listenlater")
+if [ -z "$REC" ]; then
   echo "RELEASE SMOKE FAIL: sign-in nudge never posted - share->queue->worker->credstore->notifier chain broken"; exit 1
 fi
-if ! grep -q "Sign in again to keep sending videos." /tmp/rsmoke-notif.txt; then
-  echo "RELEASE SMOKE FAIL: nudge text missing - unexpected notification source"; exit 1
-fi
+# NoticeIds.SIGNIN == 1; the id sits in the record header, unlike the extras
+# text which dumpsys may truncate. Keep the matched record in the log.
+echo "$REC"
+echo "$REC" | grep -q "id=1 " || echo "$REC" | grep -q "id=1$" || {
+  echo "RELEASE SMOKE FAIL: posted notification is not the sign-in nudge (id 1)"; exit 1; }
 
 # 4. Logcat verdict: no crash, class-loading, or security-crypto failure.
 adb logcat -d > /tmp/rsmoke-logcat.txt
