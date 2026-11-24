@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -92,6 +93,10 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
         } catch (e: Api.UnexpectedResponse) {
             ShareLogic.Outcome.UNEXPECTED_RESPONSE
         } catch (e: Api.ApiError) {
+            // The refusal answer may have landed after a cancel while the call was
+            // blocked: the cancel still wins, before any queue mutation (the shared
+            // barrier below only guards the paths that reach it).
+            currentCoroutineContext().ensureActive()
             return parkForRefusal(queue, url, title, item.attempts, e.message)
         } catch (e: Exception) {
             ShareLogic.Outcome.NETWORK_FAILURE
@@ -99,7 +104,7 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
 
         // A REPLACE-enqueued newer run already owns the queue from here on: if this run was
         // cancelled while blocked on the network, stop before mutating or re-enqueuing.
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         val d = ShareLogic.decide(outcome, item.attempts, title)
         d.toast?.let { Notifier.toast(applicationContext, it) }
         when (d.action) {
@@ -143,7 +148,7 @@ class ShareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
     private suspend fun parkForRefusal(
         queue: QueueStore, url: String, title: String, attempts: Int, serverReason: String?
     ): Result {
-        coroutineContext.ensureActive()
+        currentCoroutineContext().ensureActive()
         val d = ShareLogic.decide(ShareLogic.Outcome.REFUSAL, attempts, title)
         return if (d.action == ShareLogic.Action.RETRY) {
             queue.updateQueued(url) {

@@ -186,7 +186,7 @@ class ApiTest {
         server.start()
         val trust = HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate).build()
         val client = OkHttpClient.Builder()
-            .sslSocketFactory(trust.sslSocketFactory(), trust.trustManager())
+            .sslSocketFactory(trust.sslSocketFactory(), trust.trustManager)
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(5, TimeUnit.SECONDS)
             .writeTimeout(5, TimeUnit.SECONDS)
