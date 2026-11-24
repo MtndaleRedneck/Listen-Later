@@ -44,13 +44,36 @@ sleep 18
 PID=$(adb shell pidof com.listenlater | tr -d '\r\n')
 [ -n "$PID" ] || { echo "UPGRADE SMOKE FAIL: app died after upgrade"; exit 1; }
 
-adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-if ! adb shell cat /sdcard/ui.xml 2>/dev/null | grep -q "1 video is waiting"; then
+# Assert with dialog dismissal + retry: the emulator can throw SYSTEM windows
+# over the app (a launcher ANR "isn't responding" dialog covered it on a real
+# run while the app logcat stayed clean). Those are environment, not queue
+# state, so dismiss them, re-focus the app, and re-read. An ANR dialog is
+# answered with its "Wait" button (parsed from the dump) so nothing is killed.
+PASS=0
+UI=
+for i in $(seq 1 15); do
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  UI=$(adb shell cat /sdcard/ui.xml 2>/dev/null)
+  if echo "$UI" | grep -q "1 video is waiting"; then PASS=1; break; fi
+  if echo "$UI" | grep -q "isn't responding"; then
+    B=$(echo "$UI" | grep -o 'aerr_wait[^/]*' | grep -o 'bounds="[^"]*"' | head -1)
+    if [ -n "$B" ]; then
+      N=$(echo "$B" | sed 's/[^0-9]/ /g')
+      set -- $N
+      [ -n "$4" ] && adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
+    fi
+  else
+    adb shell input keyevent 4
+  fi
+  adb shell am start -n com.listenlater/.MainActivity >/dev/null 2>&1
+  sleep 8
+done
+if [ "$PASS" != 1 ]; then
   # Decisive diagnostics: show what IS on screen and what the app logged, so a
   # failure separates real queue loss from a covered/obscured assertion.
   echo "UPGRADE SMOKE FAIL: queued share lost across vc13 -> vc14 upgrade"
   echo "--- ui.xml (on-screen hierarchy) ---"
-  adb shell cat /sdcard/ui.xml 2>/dev/null | head -c 4000
+  echo "$UI" | head -c 4000
   echo "--- app logcat since relaunch ---"
   adb logcat -d ${PID:+--pid=$PID} | tail -60
   exit 1
