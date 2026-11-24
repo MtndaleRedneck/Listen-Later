@@ -73,6 +73,45 @@ class ShareWorkerTest {
     }
 
     @Test
+    fun aBackedOffItemNeverDelaysAStillDueOne() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        signIn(server)
+        // A is backing off; B and C are due now. The worker runs ONE item per pass.
+        QueueStore(ctx).enqueueShare("https://youtu.be/backedoff1", "BackedOff")
+        QueueStore(ctx).enqueueShare("https://youtu.be/duedue11111", "DueOne")
+        QueueStore(ctx).enqueueShare("https://youtu.be/duedue22222", "DueTwo")
+        QueueStore(ctx).updateQueued("https://youtu.be/backedoff1") {
+            it.copy(attempts = 1, nextRetryAt = System.currentTimeMillis() + 60_000L)
+        }
+        // Every call refuses: each item earns one quick retry with a fresh backoff.
+        repeat(3) {
+            server.enqueue(MockResponse().setResponseCode(200)
+                .setBody("{\"code\":50010,\"msg\":\"Can't get this video\"}"))
+        }
+
+        worker().doWork() // first due item only
+        val afterFirst = QueueStore(ctx).shareQueue()
+        assertEquals(1, afterFirst.first { it.url == "https://youtu.be/duedue11111" }.attempts)
+        val c = afterFirst.first { it.url == "https://youtu.be/duedue22222" }
+        if (c.attempts == 0) {
+            // C has not run yet, so the re-enqueued pass must be immediate - never
+            // scheduled behind A's (or B's fresh) backoff.
+            val infos = androidx.work.WorkManager.getInstance(ctx)
+                .getWorkInfosForUniqueWork("share-send").get()
+            val nextRun = infos.maxOf { it.nextScheduleTimeMillis }
+            assertTrue(
+                "a still-due item re-runs at once, not after a backoff (scheduled " +
+                    (nextRun - System.currentTimeMillis()) + "ms out)",
+                nextRun <= System.currentTimeMillis() + 10_000)
+        }
+        worker().doWork() // and the next pass really does run it
+        assertEquals(2, server.requestCount)
+        assertEquals(1, QueueStore(ctx).shareQueue().first { it.url == "https://youtu.be/duedue22222" }.attempts)
+        server.shutdown()
+    }
+
+    @Test
     fun deliberateSignOutHoldsTheQueueQuietly() = runBlocking {
         val server = MockWebServer()
         server.start()

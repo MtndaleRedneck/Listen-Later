@@ -41,11 +41,13 @@ object ShareLogic {
     fun firstDueIndex(nextRetryAts: List<Long>, now: Long): Int = nextRetryAts.indexOfFirst { it <= now }
 
     /**
-     * When the worker should wake next: the soonest retry time in the queue, as a delay
-     * from now, counting only retry times still in the future (0 when nothing waits). A failed item's own backoff never delays the rest.
+     * When the worker should run next, as a delay from now. The worker handles ONE item
+     * per pass, so a still-due item (retry time already past) means run again at once:
+     * the soonest time overall, floored at 0. A backed-off item's future time only
+     * matters once nothing is due - and then it never delays anything either.
      */
     fun nextWakeDelayMs(nextRetryAts: List<Long>, now: Long): Long =
-        (nextRetryAts.filter { it > now }.minOrNull()?.minus(now)) ?: 0L
+        (nextRetryAts.minOrNull()?.minus(now))?.coerceAtLeast(0L) ?: 0L
 
     /** One quick retry for a refusal, in case YouTube was briefly limited. */
     const val REFUSAL_MAX_TRIES = 2
