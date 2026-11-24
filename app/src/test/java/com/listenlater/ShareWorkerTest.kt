@@ -27,7 +27,7 @@ import java.util.concurrent.CountDownLatch
  * and the cancellation barrier after a blocked network call.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = ListenLaterApp::class)
 class ShareWorkerTest {
 
     private val ctx: Context = ApplicationProvider.getApplicationContext()

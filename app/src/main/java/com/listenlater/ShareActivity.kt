@@ -38,9 +38,9 @@ class ShareActivity : Activity() {
                 // Durable before gone: one small synchronous commit, here, before finish().
                 // A NoDisplay window must not linger for async I/O (it has to finish before
                 // its resume completes), and finishing before a durable write would leave a
-                // process-kill window. The commit is one small SharedPreferences write (a few
-                // queued entries of JSON), and its result is honored: a failed commit says so
-                // instead of pretending the share was saved.
+                // process-kill window. The commit is one small SharedPreferences write; its
+                // latency is not separately guaranteed, and its result is honored:
+                // a failed commit says so instead of pretending the share was saved.
                 val saved = try {
                     QueueStore(app).enqueueShareDurable(url, title)
                 } catch (t: Throwable) {

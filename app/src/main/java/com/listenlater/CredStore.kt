@@ -113,29 +113,48 @@ class CredStore private constructor(private val appContext: Context, initialStor
         _needsLogin.value = false
         if (prefs is MemoryPrefs) {
             // The saved file could not be read at launch and was left untouched. Fresh
-            // credentials are in hand now, so replacing the unreadable file loses nothing.
-            // Staged: the new file is written and verified under a temp name FIRST, and the
-            // old file is deleted only once the replacement is complete on disk.
+            // credentials are in hand now, so replacing it loses nothing. The shape is
+            // dictated by EncryptedSharedPreferences: the logical file name is bound into
+            // the encrypted keys (AAD), so a renamed-in staged file would not decrypt. The
+            // replacement is created under the final name from the start; the ORIGINAL
+            // bytes are moved aside (never deleted) and moved back if the recreate fails.
+            // Crash mid-swap: the aside copy still holds the original bytes and the next
+            // open simply falls back to memory again.
+            val dir = java.io.File(appContext.applicationInfo.dataDir, "shared_prefs")
+            val old = java.io.File(dir, "creds.xml")
+            // Every preserved generation keeps its own name: an earlier aside may be the only
+            // copy of the original bytes after a crash, so one is never overwritten.
+            var aside = java.io.File(dir, "creds.unreadable.xml")
+            var gen = 2
+            while (aside.exists()) { aside = java.io.File(dir, "creds.unreadable.$gen.xml"); gen++ }
             try {
-                val staging = "creds_staging"
-                appContext.deleteSharedPreferences(staging)
-                val staged = create(appContext, staging).edit()
-                    .putString("server", server)
-                    .putString("username", username)
-                    .putString("token", token)
-                    .putLong("loginAt", System.currentTimeMillis())
-                    .putBoolean("needsLogin", false)
-                    .putBoolean("loginNotified", false)
-                    .putBoolean("signedOut", false)
-                    .putBoolean("rememberMe", remember)
-                if (remember) staged.putString("password", password)
-                check(staged.commit()) { "staged write did not land" }
-                val dir = java.io.File(appContext.applicationInfo.dataDir, "shared_prefs")
+                if (old.isFile) check(old.renameTo(aside)) { "could not move the unreadable file aside" }
+                // Evict the framework's File-keyed SharedPreferences cache entry: it can still
+                // hold the undecryptable instance, and a fresh create under the same name would
+                // reuse it. The file is already aside, so only the cached instance is dropped.
                 appContext.deleteSharedPreferences("creds")
-                check(java.io.File(dir, "$staging.xml").renameTo(java.io.File(dir, "creds.xml"))) { "staged file did not move into place" }
-                instance = create(appContext) // every live CredStore follows this store now
+                try {
+                    val freshPrefs = create(appContext)
+                    val fresh = freshPrefs.edit()
+                        .putString("server", server)
+                        .putString("username", username)
+                        .putString("token", token)
+                        .putLong("loginAt", System.currentTimeMillis())
+                        .putBoolean("needsLogin", false)
+                        .putBoolean("loginNotified", false)
+                        .putBoolean("signedOut", false)
+                        .putBoolean("rememberMe", remember)
+                    if (remember) fresh.putString("password", password)
+                    check(fresh.commit()) { "fresh login did not land on disk" }
+                    instance = freshPrefs // every live CredStore follows this store now
+                } catch (e: Exception) {
+                    // Recreate failed: drop the partial fresh file AND its cache entry, put the
+                    // original bytes back, stay memory-only.
+                    appContext.deleteSharedPreferences("creds")
+                    if (aside.isFile && !old.isFile) aside.renameTo(old)
+                }
             } catch (e: Exception) {
-                // Stay memory-only for this process; nothing is deleted and nothing crashes.
+                // Could not even move the file aside: nothing was changed, stay memory-only.
             }
         }
     }
@@ -174,9 +193,25 @@ class CredStore private constructor(private val appContext: Context, initialStor
         /** Test hook: slow the one-time migration so a mid-migration reader can be exercised. */
         @Volatile var migrationSlowdownMs: Long = 0L
 
-        private fun create(ctx: Context, name: String = "creds"): SharedPreferences = EncryptedSharedPreferences.create(
+        /** Test hook: make the next create() throw, to exercise the rollback path. */
+        @Volatile internal var failNextCreateForTests = false
+
+        /**
+         * Test hook: replace the encrypted-store factory. Robolectric has no
+         * AndroidKeyStore, so the real factory can never succeed there; the override
+         * lets the recovery branches run against a file-backed plain store.
+         */
+        @Volatile internal var createOverrideForTests: ((Context) -> SharedPreferences)? = null
+
+        private fun create(ctx: Context): SharedPreferences {
+            if (failNextCreateForTests) { failNextCreateForTests = false; throw java.security.GeneralSecurityException("injected create failure") }
+            createOverrideForTests?.let { return it(ctx) }
+            return doCreate(ctx)
+        }
+
+        private fun doCreate(ctx: Context): SharedPreferences = EncryptedSharedPreferences.create(
             ctx,
-            name,
+            "creds",
             MasterKey.Builder(ctx).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
@@ -201,9 +236,13 @@ class CredStore private constructor(private val appContext: Context, initialStor
             // wrong call would delete a login that reads fine later. Run signed out in
             // memory, ask him to sign in, and never crash. If he does sign in, THAT is the
             // moment replacing the file loses nothing - see markLoggedIn.
-            val mem = CredStore(ctx, MemoryPrefs())
-            Notifier.notifySignInOnce(ctx, mem)
-            return mem.prefs
+            // Publish the in-memory store BEFORE anything can resolve prefs through
+            // shared(): constructing a CredStore here (or touching its prefs) would
+            // re-enter open() and recurse forever - the fallback must never look back.
+            val mem = MemoryPrefs()
+            instance = mem
+            Notifier.notifySignInOnce(ctx, CredStore(ctx, mem))
+            return mem
         }
 
         /**

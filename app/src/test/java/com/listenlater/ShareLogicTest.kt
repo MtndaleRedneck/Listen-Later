@@ -125,7 +125,8 @@ class ShareLogicTest {
         assertEquals(-1, ShareLogic.firstDueIndex(listOf(10_000L, 20_000L), 5_000L))
         assertEquals(0, ShareLogic.firstDueIndex(listOf(4_000L), 5_000L))
         assertEquals(5_000L, ShareLogic.nextWakeDelayMs(listOf(10_000L, 20_000L), 5_000L))
-        assertEquals(0L, ShareLogic.nextWakeDelayMs(listOf(0L, 60_000L), 5_000L))
+        // An already-due item is run by this pass, not waited on: the wake targets the soonest FUTURE retry.
+        assertEquals(55_000L, ShareLogic.nextWakeDelayMs(listOf(0L, 60_000L), 5_000L))
         assertEquals(0L, ShareLogic.nextWakeDelayMs(emptyList(), 5_000L))
     }
 }

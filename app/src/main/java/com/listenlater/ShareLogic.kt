@@ -42,10 +42,10 @@ object ShareLogic {
 
     /**
      * When the worker should wake next: the soonest retry time in the queue, as a delay
-     * from now (0 when something is due). A failed item's own backoff never delays the rest.
+     * from now, counting only retry times still in the future (0 when nothing waits). A failed item's own backoff never delays the rest.
      */
     fun nextWakeDelayMs(nextRetryAts: List<Long>, now: Long): Long =
-        (nextRetryAts.minOrNull()?.minus(now))?.coerceAtLeast(0L) ?: 0L
+        (nextRetryAts.filter { it > now }.minOrNull()?.minus(now)) ?: 0L
 
     /** One quick retry for a refusal, in case YouTube was briefly limited. */
     const val REFUSAL_MAX_TRIES = 2
