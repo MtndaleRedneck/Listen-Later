@@ -59,6 +59,9 @@ for scale in 1.0 1.3; do
   adb shell am force-stop com.listenlater; sleep 1
   adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez postnotice true
   sleep 7
+  # Presence check first: an empty shade must fail the step, not produce a green blank shot.
+  adb shell dumpsys notification --noredact | grep -c "pkg=com.listenlater" | tee /tmp/ncount
+  [ "$(cat /tmp/ncount)" -ge 1 ] || { echo "NO LISTENLATER NOTIFICATION POSTED"; exit 1; }
   adb shell input keyevent KEYCODE_HOME; sleep 2
   adb exec-out screencap -p > $OUT/notif-statusbar-$scale.png
   adb shell cmd statusbar expand-notifications; sleep 3
