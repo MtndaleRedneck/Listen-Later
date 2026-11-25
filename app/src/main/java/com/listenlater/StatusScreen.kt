@@ -135,9 +135,9 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
         // Narrow phone plus a large font scale: the title would take the width the status pill needs
-        // ("Disconnected" clipped at 360dp x 1.3), so the title stays at its unscaled 20sp there.
+        // ("Disconnected" clipped at 360dp x 1.3), so the title stays at 18sp unscaled there.
         val titleCfg = LocalConfiguration.current
-        val titleSize = if (titleCfg.screenWidthDp < 400 && titleCfg.fontScale > 1.15f) (20f / titleCfg.fontScale).sp else 20.sp
+        val titleSize = if (titleCfg.screenWidthDp < 400 && titleCfg.fontScale > 1.15f) (18f / titleCfg.fontScale).sp else 20.sp
         Text("Listen Later", fontSize = titleSize, fontWeight = FontWeight.Bold, color = TextC, maxLines = 1, overflow = TextOverflow.Ellipsis)
         // Status pill centered in the free space between the name and the gear tile;
         // bounded so a long status wraps instead of competing with the title.
@@ -155,13 +155,19 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
             val compact = availWidth < 112.dp * fontScale
             Surface(color = NavBg, shape = RoundedCornerShape(50), modifier = Modifier.widthIn(max = maxWidth)) {
                 Row(
-                    Modifier.padding(horizontal = if (compact) 10.dp else 14.dp, vertical = if (compact) 6.dp else 8.dp),
+                    Modifier.padding(horizontal = if (compact) 8.dp else 14.dp, vertical = if (compact) 6.dp else 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(color = if (connected) Sage else Red, shape = RoundedCornerShape(50), modifier = Modifier.width(if (compact) 7.dp else 9.dp).height(if (compact) 7.dp else 9.dp)) {}
                     Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
                     if (connected) {
-                        Text("Connected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+                        // Same shrink-to-fit as Disconnected (floor 10sp) so "Connected" is never clipped.
+                        var connSize by remember(availWidth, fontScale) { mutableStateOf(if (compact) 12f else 13f) }
+                        Text(
+                            "Connected", fontSize = connSize.sp, fontWeight = FontWeight.SemiBold, color = TextC,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                            onTextLayout = { if (it.didOverflowWidth && connSize > 10f) connSize -= 0.5f },
+                        )
                     } else {
                         // "Disconnected" is long: shrink the text until it fits the free header space (down to 10sp)
                         // instead of clipping it, at any phone width or font scale.
@@ -175,7 +181,7 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
                 }
             }
         }
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(4.dp))
         // 40dp visual tile inside a real 48dp touch target.
         Box(
             Modifier.size(48.dp).clip(RoundedCornerShape(11.dp))

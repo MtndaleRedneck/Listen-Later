@@ -124,6 +124,7 @@ adb exec-out screencap -p > $OUT/v19-settings-centered.png
 adb shell am force-stop com.listenlater; sleep 1
 adb shell "am start -n com.listenlater/.MainActivity --ez demo true --es updateResult \"You're up to date.\""; sleep 5
 tap_text "Settings" || echo "REQUIRED-TAP-MISS: Settings (uptodate)"; sleep 1
+swipe_up; sleep 1
 adb exec-out screencap -p > $OUT/v19-uptodate-at1s.png
 sleep 7
 adb exec-out screencap -p > $OUT/v19-uptodate-at8s.png
