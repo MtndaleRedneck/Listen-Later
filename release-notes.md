@@ -1,3 +1,13 @@
+## What's new in 1.11.0
+
+November 25, 2026. Settings now remembers where you were, and a few spacing and color details are cleaned up.
+
+Improved:
+- Settings keeps its scroll position when you come back from Feedback, and starts at the top each time you open it fresh.
+- A little more space above the app header on the home screen.
+- The arrow on "Feedback & bugs" is white and larger.
+- Accent and the vibrate switch now share one card titled "Accent color".
+
 ## What's new in 1.10.0
 
 November 25, 2026. Buttons now feel like BingeMote's, and Settings has an accent color picker.

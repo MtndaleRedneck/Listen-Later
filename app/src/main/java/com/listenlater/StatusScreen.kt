@@ -133,7 +133,7 @@ private val TopArrowIcon: ImageVector = ImageVector.Builder(
 private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     val ctx = LocalContext.current
     val icon = remember { ctx.packageManager.getApplicationIcon(ctx.packageName).toImageBitmap() }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 0.dp, end = 0.dp, top = 8.dp, bottom = 8.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 0.dp, end = 0.dp, top = 12.dp, bottom = 8.dp)) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
         // Narrow phone plus a large font scale: the title would take the width the status pill needs
@@ -461,10 +461,14 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     }
 
     val listScroll = rememberScrollState()
+    // Settings keeps its place while Feedback is open on top of it; leaving Settings for Home resets it to the top.
+    val settingsScroll = rememberScrollState()
+    LaunchedEffect(subScreen) { if (subScreen == "") settingsScroll.scrollTo(0) }
     val hasRows = episodes.isNotEmpty() || queued.isNotEmpty() || skipped.isNotEmpty()
 
     if (subScreen == "settings") {
         SettingsScreen(
+            scrollState = settingsScroll,
             onBack = { subScreen = "" },
             onFeedback = { subScreen = "feedback" },
             onUpdateFound = { info -> updateUi = UpdateUi.Offer(info) },

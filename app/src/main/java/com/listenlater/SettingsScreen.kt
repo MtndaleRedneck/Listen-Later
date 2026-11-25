@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
+    scrollState: androidx.compose.foundation.ScrollState,
     onBack: () -> Unit,
     onFeedback: () -> Unit,
     onUpdateFound: (UpdateInfo) -> Unit,
@@ -58,7 +59,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     Column(
-        Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().background(Bg).verticalScroll(scrollState).padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.offset(x = (-4).dp, y = (-4).dp)) {
             HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
@@ -155,7 +156,7 @@ fun SettingsScreen(
         }
         Spacer(Modifier.height(14.dp))
 
-        SettingsSection("Accent") {
+        SettingsSection("Accent color") {
             val view = LocalView.current
             // Choices are saved as colours, so the order here is free to change.
             Swatches.withIndex().chunked(4).forEach { row ->
@@ -176,11 +177,7 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
-        Spacer(Modifier.height(14.dp))
-
-        SettingsSection("Feel") {
-            val view = LocalView.current
+            Spacer(Modifier.height(6.dp))
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .toggleable(value = UiPrefs.haptics, role = Role.Switch, onValueChange = { next ->
@@ -212,7 +209,7 @@ fun SettingsScreen(
                     Spacer(Modifier.width(8.dp))
                     Icon(
                         ChevronRightIcon,
-                        contentDescription = null, tint = Muted, modifier = Modifier.size(24.dp),
+                        contentDescription = null, tint = TextC, modifier = Modifier.size(28.dp),
                     )
                 }
             }
