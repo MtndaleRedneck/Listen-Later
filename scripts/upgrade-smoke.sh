@@ -56,6 +56,20 @@ waiting_proof() {
   return 0
 }
 
+# An EXTERNAL "isn't responding" window (a launcher ANR) is environment, not app state: answer
+# its Wait button (nothing is killed) from the current $UI. The app's own ANR/crash is never
+# passed to this helper: callers test for it first and stop.
+answer_external_anr() {
+  echo "a system 'isn't responding' window is on top (not the app): answering Wait"
+  echo "$UI" | grep -o ' text="[^"]*isn[^"]*"' | head -2
+  ANRB=$(echo "$UI" | grep -o 'aerr_wait[^/]*' | grep -o 'bounds="[^"]*"' | head -1)
+  if [ -n "$ANRB" ]; then
+    N=$(echo "$ANRB" | sed 's/[^0-9]/ /g')
+    set -- $N
+    [ -n "$4" ] && adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
+  fi
+}
+
 # Print what is on screen: which packages own windows and the texts, so a launcher ANR
 # or other system window is told apart from the app's own state.
 show_screen() {
@@ -106,10 +120,22 @@ run_one() {
   # BEFORE evidence: the queue exists on the OLD version (its sign-in screen shows the waiting copy).
   adb shell am start -n $PKG/.MainActivity >/dev/null 2>&1
   BEFORE=0
-  for i in $(seq 1 10); do
+  BEFORE_REASON=""
+  for i in $(seq 1 15); do
     sleep 4
+    # The app's own ANR/crash is a defect: stop, never dismiss it into a pass.
+    if dump_ui && echo "$UI" | grep -q "Listen Later isn't responding\|Listen Later keeps stopping"; then
+      BEFORE_REASON="the APP itself ANR'd/crashed on the OLD version - not dismissible"; break
+    fi
     if waiting_proof; then BEFORE=1; break; fi
+    # Same external-only handling as the after-upgrade assert: answer a launcher ANR with Wait,
+    # re-focus the app, and look again (bounded by the 15 tries).
+    if echo "$UI" | grep -q "isn't responding"; then
+      echo "before-attempt $i:"; answer_external_anr
+    fi
+    adb shell am start -n $PKG/.MainActivity >/dev/null 2>&1
   done
+  [ -z "$BEFORE_REASON" ] || echo "UPGRADE SMOKE FAIL ($OLD_TAG vc$OLD_VC): app-side failure before the upgrade: $BEFORE_REASON"
   echo "BEFORE upgrade ($OLD_TAG vc$OLD_VC): waiting copy shown on the old version = $BEFORE"
   shot "before-$OLD_TAG-vc$OLD_VC"
   if [ "$BEFORE" != 1 ]; then
@@ -166,14 +192,7 @@ run_one() {
     if [ "$DUMP_OK" = 0 ]; then
       echo "attempt $i: no successful ui dump; no verdict from this attempt"
     elif echo "$UI" | grep -q "isn't responding"; then
-      echo "attempt $i: a system 'isn't responding' window is on top (not the app): answering Wait"
-      echo "$UI" | grep -o 'package="[^"]*" content-desc="[^"]*"[^>]*text="[^"]*isn[^"]*"' | head -2
-      ANRB=$(echo "$UI" | grep -o 'aerr_wait[^/]*' | grep -o 'bounds="[^"]*"' | head -1)
-      if [ -n "$ANRB" ]; then
-        N=$(echo "$ANRB" | sed 's/[^0-9]/ /g')
-        set -- $N
-        [ -n "$4" ] && adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
-      fi
+      echo "attempt $i:"; answer_external_anr
     else
       adb shell input keyevent 4
     fi
