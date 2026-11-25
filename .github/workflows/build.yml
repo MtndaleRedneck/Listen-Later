@@ -134,6 +134,9 @@ jobs:
     # publish run all four needs have run; on any other run this job's own
     # if is false and it never runs.
     needs: [build, release-smoke, migration-test, upgrade-smoke]
+    concurrency:
+      group: publish-release
+      cancel-in-progress: false
     if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -158,17 +161,20 @@ jobs:
           TAG=v$VERSION
           # Fail closed on an existing tag OR release: a tag without a release would make
           # `gh release create` reuse the old tag (ignoring --target). No overwrite, explicit nonzero.
-          # Only a clear "Not Found" answer means absent; any other API error also stops the publish.
-          if OUT=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" 2>&1); then
-            echo "Tag $TAG already exists. Bump versionName to publish a new release; refusing."; exit 1
-          elif ! echo "$OUT" | grep -qi "not found"; then
-            echo "Could not check tag $TAG ($OUT); refusing to publish."; exit 1
-          fi
-          if OUT=$(gh release view "$TAG" 2>&1); then
-            echo "Release $TAG already exists. Bump versionName to publish a new release; refusing."; exit 1
-          elif ! echo "$OUT" | grep -qi "not found"; then
-            echo "Could not check release $TAG ($OUT); refusing to publish."; exit 1
-          fi
+          # Strict: only an actual HTTP 404 means absent, HTTP 200 means exists,
+          # anything else (auth, rate limit, 5xx, network) stops the publish.
+          check() { # $1 = label, $2 = API path
+            local OUT CODE
+            OUT=$(gh api -i "$2" 2>&1) || true
+            CODE=$(printf '%s\n' "$OUT" | sed -n '1s#^HTTP/[0-9.]* \([0-9][0-9][0-9]\).*#\1#p')
+            case "$CODE" in
+              404) echo "$1 absent (HTTP 404)";;
+              200) echo "$1 already exists (HTTP 200). Bump versionName to publish a new release; refusing."; exit 1;;
+              *)   echo "Could not check $1 (status '${CODE:-none}'); refusing to publish."; exit 1;;
+            esac
+          }
+          check "Tag $TAG" "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG"
+          check "Release $TAG" "repos/$GITHUB_REPOSITORY/releases/tags/$TAG"
           # Publish ONLY this version's section: release-notes.md keeps full history,
           # but old history in the public notes is a rules violation (v1.7.0 incident).
           # Exact whole-line string match (a version is not a regex: 1.7.0 must not
