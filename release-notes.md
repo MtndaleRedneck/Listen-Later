@@ -9,6 +9,7 @@ Improved:
 - In Settings, only the server address is tappable, shown as a pill. The "Server" label and the rest of the row are no longer links.
 - Settings has a new switch to center the status labels in the feed list instead of right-aligning them.
 - The Feedback entry matches BingeMote: the extra line under it is gone and the arrow is larger.
+- The notification icon now fills its space and no longer sits off to the right: the same microphone and clock, centered and slightly larger, with less empty space on its left.
 - "You're up to date." now disappears after 5 seconds.
 
 ## What's new in 1.8.0

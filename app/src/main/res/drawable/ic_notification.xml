@@ -8,6 +8,15 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- Fitted to the status-bar slot: the whole glyph (mic + clock) is scaled 1.1x about its own
+         bounding-box center (13.79, 12.90) and moved so that center sits on the canvas center. -->
+    <group
+        android:pivotX="13.79"
+        android:pivotY="12.9"
+        android:scaleX="1.1"
+        android:scaleY="1.1"
+        android:translateX="-1.79"
+        android:translateY="-0.9">
     <path
         android:fillColor="#FFFFFF"
         android:fillType="evenOdd"
@@ -29,4 +38,5 @@
         android:strokeWidth="0.95"
         android:strokeLineCap="round"
         android:pathData="M 18.700 18.900 L 20.176 19.884"/>
+    </group>
 </vector>
