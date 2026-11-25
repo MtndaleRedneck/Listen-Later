@@ -134,7 +134,11 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 18.dp)) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
-        Text("Listen Later", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextC, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Narrow phone plus a large font scale: the title would take the width the status pill needs
+        // ("Disconnected" clipped at 360dp x 1.3), so the title stays at its unscaled 20sp there.
+        val titleCfg = LocalConfiguration.current
+        val titleSize = if (titleCfg.screenWidthDp < 400 && titleCfg.fontScale > 1.15f) (20f / titleCfg.fontScale).sp else 20.sp
+        Text("Listen Later", fontSize = titleSize, fontWeight = FontWeight.Bold, color = TextC, maxLines = 1, overflow = TextOverflow.Ellipsis)
         // Status pill centered in the free space between the name and the gear tile;
         // bounded so a long status wraps instead of competing with the title.
         BoxWithConstraints(Modifier.weight(1f), contentAlignment = Alignment.Center) {

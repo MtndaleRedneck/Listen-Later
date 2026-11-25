@@ -41,6 +41,7 @@ tap_text() {
 # swipe_up: scroll the list using the real screen size (never a fixed coordinate).
 swipe_up() {
   read SW SH <<< "$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1 | tr x ' ')"
+  case "$SW$SH" in ''|*[!0-9]*) echo "SWIPE-MISS: wm size not numeric ('$SW' '$SH'), swipe skipped"; return 1;; esac
   adb shell input swipe $((SW/2)) $((SH*70/100)) $((SW/2)) $((SH*25/100))
 }
 # First launch warms up and seeds; captured, then discarded.
@@ -90,7 +91,7 @@ sleep 4
 adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez queuestates true
 sleep 6
-adb shell input swipe 720 2000 720 900; sleep 1
+swipe_up; sleep 1
 adb exec-out screencap -p > $OUT/v16-scrolled.png
 # Responsive check: small width + large font (review risk: fixed heights, wide rows).
 adb shell wm size 1080x2280
@@ -121,8 +122,8 @@ adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez centered
 tap_text "Settings"; sleep 2
 adb exec-out screencap -p > $OUT/v19-settings-centered.png
 adb shell am force-stop com.listenlater; sleep 1
-adb shell am start -n com.listenlater/.MainActivity --ez demo true --es updateResult "You're up to date."; sleep 5
-tap_text "Settings"; sleep 1
+adb shell "am start -n com.listenlater/.MainActivity --ez demo true --es updateResult \"You're up to date.\""; sleep 5
+tap_text "Settings" || echo "REQUIRED-TAP-MISS: Settings (uptodate)"; sleep 1
 adb exec-out screencap -p > $OUT/v19-uptodate-at1s.png
 sleep 7
 adb exec-out screencap -p > $OUT/v19-uptodate-at8s.png
@@ -139,6 +140,7 @@ shot v19-responsive-disconnected --ez demo true --ez loadfail true
 adb shell wm size 1080x2280
 adb shell wm density 480
 shot v19-360dp-disconnected --ez demo true --ez loadfail true
+shot v19-360dp-queuestates --ez demo true --ez centered true --ez queuestates true
 shot v19-360dp-episodes-centered --ez demo true --ez centered true
 swipe_up; sleep 1
 adb exec-out screencap -p > $OUT/v19-360dp-episodes-centered.png
