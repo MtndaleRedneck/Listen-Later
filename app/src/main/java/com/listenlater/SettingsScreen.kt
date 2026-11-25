@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -91,6 +92,7 @@ fun SettingsScreen(
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                     val label = serverUrl?.replace(Regex("^https?://", RegexOption.IGNORE_CASE), "") ?: "Not set"
                     val pillColor = if (serverUrl != null) Sage else Muted
+                    val pillText = if (serverUrl != null) SageText else MutedText
                     Box(
                         Modifier.heightIn(min = 48.dp)
                             .clickable(enabled = serverUrl != null, onClickLabel = "Open server webpage", role = Role.Button) {
@@ -114,7 +116,7 @@ fun SettingsScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            label, color = pillColor, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            label, color = pillText, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.clip(RoundedCornerShape(50)).background(pillColor.copy(alpha = 0.12f))
                                 .border(1.dp, pillColor.copy(alpha = 0.38f), RoundedCornerShape(50))
                                 .padding(horizontal = 14.dp, vertical = 7.dp),
@@ -175,7 +177,7 @@ fun SettingsScreen(
         SettingsSection("Feed list") {
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
-                    .clickable(onClickLabel = "Toggle centered status labels", role = Role.Switch) { onStatusCentered(!statusCentered) },
+                    .toggleable(value = statusCentered, role = Role.Switch, onValueChange = onStatusCentered),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f).padding(end = 12.dp)) {

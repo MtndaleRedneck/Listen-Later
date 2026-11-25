@@ -180,15 +180,17 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
 /** Fixed-width status column so every status ends at the same right edge (or centers, per the Settings toggle). */
 @Composable
 private fun StatusColumn(centered: Boolean, content: @Composable () -> Unit) {
-    Box(Modifier.width(112.dp), contentAlignment = if (centered) Alignment.Center else Alignment.CenterEnd) { content() }
+    // Never narrower than 112dp, and wide enough for a pill at large font scales.
+    val fs = androidx.compose.ui.platform.LocalConfiguration.current.fontScale
+    Box(Modifier.widthIn(min = 112.dp, max = (140f * maxOf(1f, fs)).dp), contentAlignment = if (centered) Alignment.Center else Alignment.CenterEnd) { content() }
 }
 
 /** Tonal pill (12% fill, 38% border) in a real 48dp touch target. */
 @Composable
-fun StatusPill(label: String, color: Color, modifier: Modifier = Modifier) {
+fun StatusPill(label: String, color: Color, textColor: Color = color, modifier: Modifier = Modifier) {
     Box(modifier.heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
         Text(
-            label, fontSize = 13.sp, color = color, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            label, fontSize = 13.sp, color = textColor, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false,
             modifier = Modifier.clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.12f))
                 .border(1.dp, color.copy(alpha = 0.38f), RoundedCornerShape(50))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -598,7 +600,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                         Text("In feed", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold)
                                     ep.status == "FAILED" ->
                                         StatusPill(
-                                            if (retryingId == ep.id) "Retrying..." else "Retry", Red,
+                                            if (retryingId == ep.id) "Retrying..." else "Retry", Red, RedText,
                                             modifier = Modifier.clickable(enabled = retryingId == null) {
                                                 val server = store.server ?: return@clickable
                                                 val token = store.token ?: return@clickable
