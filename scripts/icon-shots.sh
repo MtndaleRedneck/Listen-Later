@@ -74,23 +74,24 @@ for scale in 1.0 1.3; do
   adb shell settings put system font_scale $scale
   adb shell am force-stop com.listenlater; sleep 1
   adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez postnotice true
-  # Wait for the real condition (the app's notification is posted) for up to 40s instead of a fixed
-  # 7s: the post happens after the app's startup gate, which is slow on a cold CI emulator.
+  # Wait for the real condition (the app's notification is posted), up to 40s, and record the observed delay.
+  # The count keeps the proven --noredact form; only the number is kept, the dump itself is never printed.
   echo 0 > /tmp/ncount
+  WAITED=0
   for _ in $(seq 1 20); do
-    sleep 2
+    sleep 2; WAITED=$((WAITED+2))
     adb shell dumpsys notification --noredact | grep -c "pkg=com.listenlater" > /tmp/ncount
     [ "$(cat /tmp/ncount)" -ge 1 ] && break
   done
-  cat /tmp/ncount
+  echo "NOTIF-DELAY-OBSERVED: scale $scale count $(cat /tmp/ncount) after ~${WAITED}s (2s poll steps, includes app startup)"
   if [ "$(cat /tmp/ncount)" -lt 1 ]; then
     echo "NO LISTENLATER NOTIFICATION POSTED"
-    # Forensics for the failed wait: permission, notification manager state, process, app log.
+    # App-scoped forensics only (this package's permission, process and log), no device-wide dumps.
     adb shell dumpsys package com.listenlater | grep -i "POST_NOTIFICATIONS"
-    adb shell cmd notification list 2>&1 | head -20
-    adb shell dumpsys notification --noredact | grep -iE "listenlater|channel" | head -40
-    adb shell pidof com.listenlater; adb shell dumpsys activity activities | grep -iE "mResumedActivity|topResumed" | head -3
-    adb logcat -d -t 400 | grep -iE "listenlater|AndroidRuntime|FATAL|ANR" | tail -80
+    APP_PID=$(adb shell pidof com.listenlater)
+    echo "app pid: ${APP_PID:-none}"
+    adb shell dumpsys activity activities | grep -iE "mResumedActivity|topResumed" | grep -i listenlater | head -3
+    [ -n "$APP_PID" ] && adb logcat -d --pid="$APP_PID" -t 300 | tail -80
     exit 1
   fi
   adb shell input keyevent KEYCODE_HOME; sleep 2
