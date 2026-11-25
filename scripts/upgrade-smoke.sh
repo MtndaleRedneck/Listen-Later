@@ -30,17 +30,36 @@ mkdir -p "$EVID"
 # Test-only evidence for the run's one-day private-ish artifact: PNG screenshots and text. Never an APK.
 shot() { # name
   adb exec-out screencap -p > "$EVID/$1.png" 2>/dev/null
-  adb shell uiautomator dump /sdcard/ui-$1.xml >/dev/null 2>&1
-  adb shell cat /sdcard/ui-$1.xml 2>/dev/null > "$EVID/$1-ui.txt"
+  if dump_ui; then echo "$UI" > "$EVID/$1-ui.txt"; else echo "ui dump failed" > "$EVID/$1-ui.txt"; fi
 }
 
 vcode() { adb shell dumpsys package $PKG | grep -m1 -o 'versionCode=[0-9]*' | cut -d= -f2; }
 
+# Fresh, verified dump: the old file is removed first so a failed dump can never be read as the last
+# good one. Sets UI and returns 0 only for a successful, non-empty, well-formed dump; otherwise UI is empty.
+dump_ui() {
+  adb shell rm -f /sdcard/ui.xml >/dev/null 2>&1
+  OUT=$(adb shell uiautomator dump /sdcard/ui.xml 2>&1)
+  UI=
+  echo "$OUT" | grep -q "dumped to" || { echo "ui dump failed: $OUT"; return 1; }
+  CAND=$(adb shell cat /sdcard/ui.xml 2>/dev/null)
+  case "$CAND" in "<?xml"*"<hierarchy"*) UI="$CAND"; return 0;; esac
+  echo "ui dump unreadable"; return 1
+}
+
+# The queue proof: a node whose text is the waiting copy AND belongs to the app's package, in a
+# fresh dump, with the app's window focused. Text from a system window or a stale file does not count.
+waiting_proof() {
+  dump_ui || return 1
+  echo "$UI" | grep -o '<node[^>]*text="[^"]*1 video is waiting[^"]*"[^>]*>' | grep -q "package=\"$PKG\"" || return 1
+  adb shell dumpsys window | grep -m1 mCurrentFocus | grep -q "$PKG" || return 1
+  return 0
+}
+
 # Print what is on screen: which packages own windows and the texts, so a launcher ANR
 # or other system window is told apart from the app's own state.
 show_screen() {
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-  UI=$(adb shell cat /sdcard/ui.xml 2>/dev/null)
+  dump_ui || echo "NO VERDICT from this screen: the ui dump failed"
   echo "--- on-screen packages ---"
   echo "$UI" | grep -o 'package="[^"]*"' | sort | uniq -c
   echo "--- on-screen texts ---"
@@ -88,9 +107,7 @@ run_one() {
   BEFORE=0
   for i in $(seq 1 10); do
     sleep 4
-    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-    UI=$(adb shell cat /sdcard/ui.xml 2>/dev/null)
-    if echo "$UI" | grep -q "1 video is waiting"; then BEFORE=1; break; fi
+    if waiting_proof; then BEFORE=1; break; fi
   done
   echo "BEFORE upgrade ($OLD_TAG vc$OLD_VC): waiting copy shown on the old version = $BEFORE"
   shot "before-$OLD_TAG-vc$OLD_VC"
@@ -127,9 +144,9 @@ run_one() {
   PASS=0
   UI=
   REASON=""
+  DUMP_OK=1
   for i in $(seq 1 15); do
-    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-    UI=$(adb shell cat /sdcard/ui.xml 2>/dev/null)
+    DUMP_OK=1; dump_ui || DUMP_OK=0
     if echo "$UI" | grep -q "Listen Later isn't responding\|Listen Later keeps stopping"; then
       REASON="the APP itself ANR'd/crashed during the assert - not dismissible"; break
     fi
@@ -143,13 +160,15 @@ run_one() {
        || echo "$LC" | grep "Fatal signal" | grep -q "com.listenlater"; then
       REASON="app ANR/crash evidence in logcat during the assert"; break
     fi
-    if echo "$UI" | grep -q "1 video is waiting"; then PASS=1; break; fi
-    if echo "$UI" | grep -q "isn't responding"; then
+    if [ "$DUMP_OK" = 1 ] && waiting_proof; then PASS=1; break; fi
+    if [ "$DUMP_OK" = 0 ]; then
+      echo "attempt $i: no successful ui dump; no verdict from this attempt"
+    elif echo "$UI" | grep -q "isn't responding"; then
       echo "attempt $i: a system 'isn't responding' window is on top (not the app): answering Wait"
       echo "$UI" | grep -o 'package="[^"]*" content-desc="[^"]*"[^>]*text="[^"]*isn[^"]*"' | head -2
-      B=$(echo "$UI" | grep -o 'aerr_wait[^/]*' | grep -o 'bounds="[^"]*"' | head -1)
-      if [ -n "$B" ]; then
-        N=$(echo "$B" | sed 's/[^0-9]/ /g')
+      ANRB=$(echo "$UI" | grep -o 'aerr_wait[^/]*' | grep -o 'bounds="[^"]*"' | head -1)
+      if [ -n "$ANRB" ]; then
+        N=$(echo "$ANRB" | sed 's/[^0-9]/ /g')
         set -- $N
         [ -n "$4" ] && adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
       fi
@@ -159,6 +178,9 @@ run_one() {
     adb shell am start -n $PKG/.MainActivity >/dev/null 2>&1
     sleep 8
   done
+  if [ "$PASS" != 1 ] && [ -z "$REASON" ] && [ "$DUMP_OK" = 0 ]; then
+    REASON="the final attempt had no successful ui dump, so there is no verdict (failing closed, not a queue-loss finding)"
+  fi
   shot "after-$OLD_TAG-vc$OLD_VC-to-vc$NEW_VC-pass$PASS"
   adb logcat -d | tail -300 > "$EVID/after-$OLD_TAG-logcat.txt"
   if [ "$PASS" != 1 ]; then
@@ -181,9 +203,9 @@ run_one() {
 }
 
 FAILED=""
-for B in $BASELINES; do
+for BASE in $BASELINES; do
   # Run every baseline (no fail-fast) so a current-release failure and an older-release failure are told apart.
-  run_one "$B" || FAILED="$FAILED $B"
+  run_one "$BASE" || FAILED="$FAILED $BASE"
 done
 if [ -n "$FAILED" ]; then
   echo "UPGRADE SMOKE FAIL: baselines failed:$FAILED (of: $BASELINES)"
