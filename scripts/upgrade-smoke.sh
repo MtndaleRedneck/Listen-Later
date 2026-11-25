@@ -109,6 +109,7 @@ run_one() {
   # long ago, and grants survive install -r.
   adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS
 
+  adb logcat -c
   # Queue a share on the old version with no session (unique valid-shaped id).
   SMOKE_ID="upg$(date +%s%N | tail -c 9)"
   adb shell am start -a android.intent.action.SEND -t text/plain \
@@ -121,15 +122,32 @@ run_one() {
   adb shell am start -n $PKG/.MainActivity >/dev/null 2>&1
   BEFORE=0
   BEFORE_REASON=""
+  BPID=""
+  # 15 tries x ~4s (was 10 tries, i.e. the budget grew from ~40s to ~60s plus dump time) so one
+  # answered launcher ANR still leaves time for the waiting copy to show.
   for i in $(seq 1 15); do
     sleep 4
-    # The app's own ANR/crash is a defect: stop, never dismiss it into a pass.
+    # The app's own failure is a defect, never dismissed into a pass. Detected by package/process,
+    # not only by the English dialog title: process id change, or ANR/crash evidence for
+    # com.listenlater in logcat (cleared before this old install's share). The title check stays as
+    # an extra net (the label is "Listen Later" in v1.6.4, v1.8.0 and 1.9.0 manifests, checked).
+    CUR=$(adb shell pidof $PKG | tr -d '\r\n')
+    [ -z "$BPID" ] && BPID=$CUR
+    if [ -n "$BPID" ] && [ "$CUR" != "$BPID" ]; then
+      BEFORE_REASON="app process changed on the OLD version ($BPID -> ${CUR:-none}) - restart/crash"; break
+    fi
+    LC=$(adb logcat -d)
+    if echo "$LC" | grep -q "ANR in com.listenlater" \
+       || echo "$LC" | grep -A8 "FATAL EXCEPTION" | grep -q "Process: com.listenlater" \
+       || echo "$LC" | grep "Fatal signal" | grep -q "com.listenlater"; then
+      BEFORE_REASON="app ANR/crash evidence in logcat on the OLD version - not dismissible"; break
+    fi
     if dump_ui && echo "$UI" | grep -q "Listen Later isn't responding\|Listen Later keeps stopping"; then
-      BEFORE_REASON="the APP itself ANR'd/crashed on the OLD version - not dismissible"; break
+      BEFORE_REASON="the APP's own ANR/crash dialog on the OLD version - not dismissible"; break
     fi
     if waiting_proof; then BEFORE=1; break; fi
-    # Same external-only handling as the after-upgrade assert: answer a launcher ANR with Wait,
-    # re-focus the app, and look again (bounded by the 15 tries).
+    # Answer ONLY an external "isn't responding" window (not the app's, checked above) with Wait,
+    # then re-focus the app and look again (bounded by the 15 tries).
     if echo "$UI" | grep -q "isn't responding"; then
       echo "before-attempt $i:"; answer_external_anr
     fi
