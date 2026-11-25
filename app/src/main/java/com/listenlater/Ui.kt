@@ -90,7 +90,7 @@ fun PressTile(
     val shape = RoundedCornerShape(corner)
 
     Box(
-        modifier
+        Modifier
             .heightIn(min = minTouch)
             .semantics {
                 if (desc != null) contentDescription = desc
@@ -115,7 +115,7 @@ fun PressTile(
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            (if (fill) Modifier.fillMaxSize() else Modifier)
+            modifier
                 .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (enabled) 1f else 0.45f }
                 .then(if (lift) Modifier.shadow(if (pressed || !enabled) 2.dp else 6.dp, shape) else Modifier)
                 .clip(shape)

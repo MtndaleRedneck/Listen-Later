@@ -87,10 +87,11 @@ adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true --ei accent 1; sleep 5
 tap_text "Settings"; sleep 2
 adb exec-out screencap -p > $OUT/v110-settings-burnt-orange.png
+swipe_up; swipe_up; sleep 1
 tap_text "Send feedback, report a bug, or suggest a feature"; sleep 2
 adb exec-out screencap -p > $OUT/v110-feedback.png
-adb shell input tap 500 1000; sleep 1
-adb shell input text "It looks fine"; sleep 1
+tap_text "Your message"; sleep 1
+adb shell input text "It_looks_fine"; sleep 1
 adb exec-out screencap -p > $OUT/v110-feedback-typed.png
 # Sign-out confirm dialog.
 adb shell am force-stop com.listenlater; sleep 1
