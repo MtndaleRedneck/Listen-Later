@@ -268,7 +268,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             if (Demo.forceLoadFail) {
                 loadFailed = true
             } else {
-                episodes = Demo.episodes.map { EpisodeItem(it.id, it.title, it.status) }
+                episodes = (if (Demo.clean) Demo.cleanEpisodes else Demo.episodes).map { EpisodeItem(it.id, it.title, it.status) }
                 loadFailed = false
             }
             loading = false

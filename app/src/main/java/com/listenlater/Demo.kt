@@ -9,6 +9,8 @@ import android.content.Context
 object Demo {
     var active = false
     var forceLoadFail = false
+    /** Showcase screenshots: ordinary titles, every row in the feed, nothing queued. */
+    var clean = false
 
     data class Ep(val id: String, val title: String, val status: String)
 
@@ -18,6 +20,16 @@ object Demo {
         Ep("y2y2y2y2y2y", "Weekend talk show, episode twelve", "FAILED"),
         Ep("z3z3z3z3z3z", "Cooking along: soup for cold days", "DOWNLOADING"),
         Ep("w4w4w4w4w4w", "Old interview from the archive", "READY"),
+    )
+
+    val cleanEpisodes = listOf(
+        Ep("c1c1c1c1c1c", "How sourdough bread actually works", "COMPLETED"),
+        Ep("c2c2c2c2c2c", "A walk through the old city, part one", "COMPLETED"),
+        Ep("c3c3c3c3c3c", "Interview: a lighthouse keeper's year", "COMPLETED"),
+        Ep("c4c4c4c4c4c", "Ten minutes of calm piano", "COMPLETED"),
+        Ep("c5c5c5c5c5c", "Why the moon looks bigger near the horizon", "COMPLETED"),
+        Ep("c6c6c6c6c6c", "Lecture: the history of maps", "COMPLETED"),
+        Ep("c7c7c7c7c7c", "Garden tour in early spring", "COMPLETED"),
     )
 
     /** Signed in, one share queued, one skipped video, five episodes in every state. */

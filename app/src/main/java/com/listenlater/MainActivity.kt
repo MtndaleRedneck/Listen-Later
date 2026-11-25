@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
                     if (BuildConfig.DEBUG && intent.getBooleanExtra("demo", false)) {
                         Demo.active = true
                         Demo.forceLoadFail = intent.getBooleanExtra("loadfail", false)
+                        Demo.clean = intent.getBooleanExtra("clean", false)
                         if (intent.getBooleanExtra("signedout", false)) Demo.seedSignedOut(this@MainActivity)
                         else Demo.seedSignedIn(this@MainActivity)
                         if (intent.getBooleanExtra("queuestates", false)) Demo.seedQueueStates(this@MainActivity)
