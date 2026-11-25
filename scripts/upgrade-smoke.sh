@@ -95,10 +95,11 @@ run_one() {
   echo "BEFORE upgrade ($OLD_TAG vc$OLD_VC): waiting copy shown on the old version = $BEFORE"
   shot "before-$OLD_TAG-vc$OLD_VC"
   if [ "$BEFORE" != 1 ]; then
-    # Not fatal: an older release may word or render its queue differently. It is recorded so the
-    # after-upgrade result is read against what the old version actually showed.
-    echo "WARNING: $OLD_TAG vc$OLD_VC did not show the waiting copy before the upgrade; the after-upgrade check is then weaker evidence"
+    # SETUP failure, not an upgrade verdict: without the seeded queue confirmed on the old
+    # version the after-upgrade check cannot say anything about queue survival.
+    echo "UPGRADE SMOKE SETUP FAIL ($OLD_TAG vc$OLD_VC): the seeded queued share was NOT confirmed on the old version before the upgrade, so no upgrade verdict is possible for this baseline"
     show_screen
+    return 1
   fi
   adb shell am force-stop $PKG
 
@@ -164,7 +165,7 @@ run_one() {
     if [ -n "$REASON" ]; then
       echo "UPGRADE SMOKE FAIL ($OLD_TAG vc$OLD_VC -> vc$NEW_VC): app-side failure: $REASON"
     else
-      echo "UPGRADE SMOKE FAIL ($OLD_TAG vc$OLD_VC -> vc$NEW_VC): the waiting copy never appeared in 15 tries and no app ANR/crash/restart was detected; the queue showed on the OLD version before the upgrade. Read the on-screen packages/texts below: if a system window covered the app this is not queue-loss proof, if the app's own sign-in screen showed without the waiting copy the queue was lost."
+      echo "UPGRADE SMOKE FAIL ($OLD_TAG vc$OLD_VC -> vc$NEW_VC): the waiting copy never appeared in 15 tries and no app ANR/crash/restart was detected (the seeded queue WAS confirmed on the old version before the upgrade). Read the on-screen packages/texts below: if a system window covered the app this is not queue-loss proof, if the app's own sign-in screen showed without the waiting copy the queue was lost."
     fi
     show_screen
     fail_diagnostics
@@ -179,7 +180,13 @@ run_one() {
   return 0
 }
 
+FAILED=""
 for B in $BASELINES; do
-  run_one "$B" || exit 1
+  # Run every baseline (no fail-fast) so a current-release failure and an older-release failure are told apart.
+  run_one "$B" || FAILED="$FAILED $B"
 done
+if [ -n "$FAILED" ]; then
+  echo "UPGRADE SMOKE FAIL: baselines failed:$FAILED (of: $BASELINES)"
+  exit 1
+fi
 echo "UPGRADE SMOKE TEST PASS ($BASELINES)"
