@@ -20,6 +20,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -132,7 +133,7 @@ private val TopArrowIcon: ImageVector = ImageVector.Builder(
 private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     val ctx = LocalContext.current
     val icon = remember { ctx.packageManager.getApplicationIcon(ctx.packageName).toImageBitmap() }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 0.dp, end = 0.dp, top = 12.dp, bottom = 12.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 0.dp, end = 0.dp, top = 8.dp, bottom = 8.dp)) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
         // Narrow phone plus a large font scale: the title would take the width the status pill needs
@@ -182,8 +183,7 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
                 }
             }
         }
-        Spacer(Modifier.width(8.dp))
-        HeaderIconButton(onSettings, "Settings") {
+        HeaderIconButton(onSettings, "Settings", Modifier.offset(x = 4.dp)) {
             Icon(Icons.Default.Settings, contentDescription = null, tint = Sage)
         }
     }
@@ -704,7 +704,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             title = { Text("Sign out?", color = TextC) },
             text = { Text("Videos you share will wait until you sign in again.", color = Muted) },
             confirmButton = {
-                HTextButton({ signOutAsk = false; onSignedOut() }) { Text("Sign out", color = Sage) }
+                HTextButton({ signOutAsk = false; onSignedOut() }) { Text("Sign out", color = SageText) }
             },
             dismissButton = {
                 HTextButton({ signOutAsk = false }) { Text("Cancel", color = Muted) }
@@ -741,11 +741,11 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         Text("Android will ask you to confirm the install.", color = Muted)
                         Spacer(Modifier.height(4.dp))
                         HTextButton({ queueStore.skippedUpdate = u.info.versionName; updateUi = null }) {
-                            Text("Skip this version", color = Sage)
+                            Text("Skip this version", color = SageText)
                         }
                     }
                 },
-                confirmButton = { HTextButton({ startUpdate(u.info) }) { Text("Update", color = Sage) } },
+                confirmButton = { HTextButton({ startUpdate(u.info) }) { Text("Update", color = SageText) } },
                 dismissButton = { HTextButton({ updateUi = null }) { Text("Later", color = Muted) } },
             )
             is UpdateUi.Downloading -> AlertDialog(
@@ -767,7 +767,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 containerColor = Card2,
                 title = { Text("Update not installed", color = TextC) },
                 text = { Text(u.message, color = Muted) },
-                confirmButton = { HTextButton({ updateUi = null }) { Text("OK", color = Sage) } },
+                confirmButton = { HTextButton({ updateUi = null }) { Text("OK", color = SageText) } },
             )
         }
     }

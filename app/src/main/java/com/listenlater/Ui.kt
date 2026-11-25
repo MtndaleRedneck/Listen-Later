@@ -11,6 +11,14 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -88,11 +96,31 @@ fun PressTile(
     // Read the newest callback at fire time so a recomposition never restarts a press in progress.
     val tap by rememberUpdatedState(onTap)
     val shape = RoundedCornerShape(corner)
+    // Keyboard / D-pad: reachable by Tab, Enter or D-pad centre activates, a ring shows where focus is.
+    val focusSource = remember { MutableInteractionSource() }
+    val focused by focusSource.collectIsFocusedAsState()
+    var keyArmed by remember(enabled) { mutableStateOf(false) }
 
     Box(
         Modifier
             .heightIn(min = minTouch)
-            .semantics {
+            .then(
+                if (enabled) Modifier
+                    .onFocusChanged { if (!it.isFocused) keyArmed = false }
+                    .focusable(interactionSource = focusSource)
+                    .onKeyEvent { e ->
+                        val activate = e.key == Key.Enter || e.key == Key.NumPadEnter || e.key == Key.DirectionCenter
+                        when {
+                            !activate -> false
+                            e.type == KeyEventType.KeyDown -> { keyArmed = true; true }
+                            // Only a release that matches a press made while this tile had focus.
+                            e.type == KeyEventType.KeyUp -> { if (keyArmed) { keyArmed = false; tapHaptic(view); tap() }; true }
+                            else -> true
+                        }
+                    }
+                else Modifier
+            )
+            .semantics(mergeDescendants = true) {
                 if (desc != null) contentDescription = desc
                 role = Role.Button
                 if (!enabled) disabled()
@@ -120,7 +148,8 @@ fun PressTile(
                 .then(if (lift) Modifier.shadow(if (pressed || !enabled) 2.dp else 6.dp, shape) else Modifier)
                 .clip(shape)
                 .background(background)
-                .then(if (border != null) Modifier.border(border, shape) else Modifier),
+                .then(if (border != null) Modifier.border(border, shape) else Modifier)
+                .then(if (focused) Modifier.border(2.dp, TextC, shape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             content()
@@ -131,26 +160,35 @@ fun PressTile(
 
 /** The 40 dp dark tile behind back and Settings arrows. Sinks on press; only the icon dims. */
 @Composable
-fun HeaderIconButton(onClick: () -> Unit, desc: String, content: @Composable BoxScope.() -> Unit) {
+fun HeaderIconButton(onClick: () -> Unit, desc: String, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val view = LocalView.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val sink by animateFloatAsState(if (isPressed) 0.94f else 1f, tween(if (isPressed) 90 else 120), label = "sink")
     val dim by animateFloatAsState(if (isPressed) 0.15f else 0f, tween(if (isPressed) 90 else 120), label = "dim")
+    val focused by interactionSource.collectIsFocusedAsState()
+    // The 48 dp box is the touch target; the dark tile drawn inside it stays 40 dp, as in BingeMote.
     Box(
-        Modifier
-            .size(40.dp)
-            .graphicsLayer { scaleX = sink; scaleY = sink }
-            .clip(RoundedCornerShape((32f / 3f).dp))
-            .background(NavBg)
+        modifier
+            .size(48.dp)
             .semantics { contentDescription = desc }
-            .clickable(interactionSource = interactionSource, indication = LocalIndication.current, role = Role.Button) {
+            .clickable(interactionSource = interactionSource, indication = null, role = Role.Button) {
                 tapHaptic(view)
                 onClick()
             },
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.graphicsLayer { alpha = 1f - dim }, content = content)
+        Box(
+            Modifier
+                .size(40.dp)
+                .graphicsLayer { scaleX = sink; scaleY = sink }
+                .clip(RoundedCornerShape((32f / 3f).dp))
+                .background(NavBg)
+                .then(if (focused) Modifier.border(2.dp, TextC, RoundedCornerShape((32f / 3f).dp)) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.graphicsLayer { alpha = 1f - dim }, content = content)
+        }
     }
 }
 

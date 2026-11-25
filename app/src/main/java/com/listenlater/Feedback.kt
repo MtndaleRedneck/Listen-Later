@@ -80,12 +80,12 @@ fun FeedbackScreen(onBack: () -> Unit) {
     val c = remember { Feedback.context(ctx) }
     fun open(url: String) = runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
     Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.offset(x = (-4).dp, y = (-4).dp)) {
             HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(8.dp))
             Text("Feedback", color = TextC, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(10.dp))
         BackHandler { onBack() }
 
         FeedbackCard {

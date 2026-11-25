@@ -60,12 +60,12 @@ fun SettingsScreen(
     Column(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.offset(x = (-4).dp, y = (-4).dp)) {
             HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(8.dp))
             Text("Settings", color = TextC, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(10.dp))
         BackHandler { onBack() }
 
         SettingsSection("Account") {
@@ -158,13 +158,13 @@ fun SettingsScreen(
         SettingsSection("Accent") {
             val view = LocalView.current
             // Choices are saved as colours, so the order here is free to change.
-            Swatches.chunked(4).forEach { row ->
+            Swatches.withIndex().chunked(4).forEach { row ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    row.forEach { col ->
+                    row.forEach { (i, col) ->
                         val on = UiPrefs.accent == col
                         Box(
                             Modifier.size(48.dp).clip(CircleShape)
-                                .semantics { contentDescription = "Accent color"; selected = on }
+                                .semantics { contentDescription = "Accent color, ${SwatchNames[i]}"; selected = on }
                                 .clickable(role = Role.RadioButton) { tapHaptic(view); UiPrefs.chooseAccent(col) },
                             contentAlignment = Alignment.Center,
                         ) {
@@ -182,7 +182,7 @@ fun SettingsScreen(
         SettingsSection("Feel") {
             val view = LocalView.current
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 32.dp)
+                Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .toggleable(value = UiPrefs.haptics, role = Role.Switch, onValueChange = { next ->
                         // Ticks once when turned on, stays silent when turned off.
                         tapHaptic(view, next)

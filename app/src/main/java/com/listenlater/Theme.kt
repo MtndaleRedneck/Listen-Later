@@ -40,6 +40,9 @@ val Swatches: List<Color> = listOf(
     0xFFA89A8C, // taupe
 ).map { Color(it) }
 
+/** Spoken names for [Swatches], same order, so a screen reader can tell the colours apart. */
+val SwatchNames: List<String> = listOf("Sage", "Burnt orange", "Dusty blue", "Gray-green", "Terracotta", "Mauve", "Indigo", "Taupe")
+
 /** Saved looks. Plain preferences (not the encrypted store) so reading them is instant and can never block a tap. */
 object UiPrefs {
     private var prefs: android.content.SharedPreferences? = null
