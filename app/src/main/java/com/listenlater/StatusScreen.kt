@@ -18,6 +18,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
@@ -151,12 +152,12 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
                     Modifier.padding(horizontal = if (compact) 10.dp else 14.dp, vertical = if (compact) 6.dp else 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(color = if (connected) Sage else Muted, shape = RoundedCornerShape(50), modifier = Modifier.width(if (compact) 7.dp else 9.dp).height(if (compact) 7.dp else 9.dp)) {}
+                    Surface(color = if (connected) Sage else Red, shape = RoundedCornerShape(50), modifier = Modifier.width(if (compact) 7.dp else 9.dp).height(if (compact) 7.dp else 9.dp)) {}
                     Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
                     if (connected) {
                         Text("Connected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
                     } else {
-                        Text("Can't reach server", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                        Text("Disconnected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
                     }
                 }
             }
@@ -174,6 +175,30 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
             }
         }
     }
+}
+
+/** Fixed-width status column so every status ends at the same right edge (or centers, per the Settings toggle). */
+@Composable
+private fun StatusColumn(centered: Boolean, content: @Composable () -> Unit) {
+    Box(Modifier.width(112.dp), contentAlignment = if (centered) Alignment.Center else Alignment.CenterEnd) { content() }
+}
+
+/** Tonal pill (12% fill, 38% border) in a real 48dp touch target. */
+@Composable
+fun StatusPill(label: String, color: Color, modifier: Modifier = Modifier) {
+    Box(modifier.heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+        Text(
+            label, fontSize = 13.sp, color = color, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            modifier = Modifier.clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.12f))
+                .border(1.dp, color.copy(alpha = 0.38f), RoundedCornerShape(50))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun RowDivider() {
+    Box(Modifier.fillMaxWidth().padding(horizontal = 4.dp).height(1.dp).background(Color.White.copy(alpha = 0.07f)))
 }
 
 private data class EpisodeItem(val id: String, val title: String, val status: String)
@@ -196,6 +221,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     var feedUrl by remember { mutableStateOf(store.feedUrl) }
     var updateUi by remember { mutableStateOf<UpdateUi?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
+    var statusCentered by remember { mutableStateOf(store.statusCentered) }
     var subScreen by rememberSaveable { mutableStateOf("") } // "", "settings" or "feedback"
     var retryingId by remember { mutableStateOf<String?>(null) }
     var pendingApk by remember { mutableStateOf<File?>(null) }
@@ -430,6 +456,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             feedAvailable = feedUrl != null,
             onCopyFeedLink = { copyFeedLink() },
             onSignOut = { signOutAsk = true },
+            statusCentered = statusCentered,
+            onStatusCentered = { statusCentered = it; store.statusCentered = it },
         )
     } else if (subScreen == "feedback") {
         FeedbackScreen(onBack = { subScreen = "settings" })
@@ -486,7 +514,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 ) {
                     Box {
                     Column(Modifier.verticalScroll(listScroll).padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 64.dp)) {
+                        var firstRow = true
                         queued.forEach { q ->
+                            if (!firstRow) RowDivider()
+                            firstRow = false
                             val id = VideoUrl.extractVideoId(q.url)
                             val now = System.currentTimeMillis()
                             Row(
@@ -501,6 +532,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                     )
                                     if (q.title.isEmpty() && id != null) Text(id, fontSize = 12.sp, color = Muted)
                                 }
+                                StatusColumn(statusCentered) {
                                 Text(
                                     when {
                                         store.needsLogin -> "Waiting for sign-in"
@@ -514,12 +546,14 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                     // A long status wraps within its own bounded column instead
                                     // of squeezing the title into uselessness; no ellipsis -
                                     // the full reason stays readable at any font scale.
-                                    textAlign = TextAlign.End,
-                                    modifier = Modifier.widthIn(max = 120.dp)
+                                    textAlign = if (statusCentered) TextAlign.Center else TextAlign.End,
                                 )
+                                }
                             }
                         }
                         skipped.forEach { sk ->
+                            if (!firstRow) RowDivider()
+                            firstRow = false
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -534,7 +568,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                         Text(sk.reason, fontSize = 12.sp, color = Muted)
                                     }
                                 }
-                                Column(horizontalAlignment = Alignment.End) {
+                                StatusColumn(statusCentered) {
+                                Column(horizontalAlignment = if (statusCentered) Alignment.CenterHorizontally else Alignment.End) {
                                     Text("Couldn't get it", fontSize = 13.sp, color = Muted)
                                     Text("Try again", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.clickable {
@@ -544,9 +579,12 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                             ShareWorker.enqueue(context, 0L)
                                         }.padding(horizontal = 12.dp, vertical = 12.dp))
                                 }
+                                }
                             }
                         }
                         episodes.forEach { ep ->
+                            if (!firstRow) RowDivider()
+                            firstRow = false
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -554,13 +592,13 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             ) {
                                 Text(ep.title, fontSize = 15.sp, color = TextC,
                                     modifier = Modifier.weight(1f).padding(end = 10.dp))
+                                StatusColumn(statusCentered) {
                                 when {
                                     ep.status == "COMPLETED" ->
                                         Text("In feed", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold)
                                     ep.status == "FAILED" ->
-                                        Text(
-                                            if (retryingId == ep.id) "Retrying..." else "Retry",
-                                            fontSize = 13.sp, color = Yellow, fontWeight = FontWeight.SemiBold,
+                                        StatusPill(
+                                            if (retryingId == ep.id) "Retrying..." else "Retry", Red,
                                             modifier = Modifier.clickable(enabled = retryingId == null) {
                                                 val server = store.server ?: return@clickable
                                                 val token = store.token ?: return@clickable
@@ -579,11 +617,11 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                                         Notifier.toast(context, "Couldn't retry. Try again.")
                                                     }
                                                 }
-                                            }.padding(horizontal = 12.dp, vertical = 12.dp))
+                                            })
                                     ep.status == "PENDING" || ep.status == "DOWNLOADING" ->
                                         Text("Downloading", fontSize = 13.sp, color = Muted)
                                     else -> // READY: cleaned up on the server, not in the feed
-                                        Text("Get again", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold,
+                                        StatusPill("Get again", Yellow,
                                             modifier = Modifier.clickable {
                                                 val server = store.server ?: return@clickable
                                                 val token = store.token ?: return@clickable
@@ -598,7 +636,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                                         Notifier.toast(context, "Couldn't start it. Try again.")
                                                     }
                                                 }
-                                            }.padding(8.dp))
+                                            })
+                                }
                                 }
                             }
                         }

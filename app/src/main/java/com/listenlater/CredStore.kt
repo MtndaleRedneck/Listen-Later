@@ -46,6 +46,11 @@ class CredStore private constructor(private val appContext: Context, initialStor
         get() = prefs.getString("feedUrl", null)
         set(v) = prefs.edit().putString("feedUrl", v).apply()
 
+    /** Feed-row status alignment: false = right-aligned (default), true = centered in the status column. */
+    var statusCentered: Boolean
+        get() = prefs.getBoolean("statusCentered", false)
+        set(v) = prefs.edit().putBoolean("statusCentered", v).apply()
+
     var loginAtMs: Long
         get() = prefs.getLong("loginAt", 0L)
         set(v) = prefs.edit().putLong("loginAt", v).apply()

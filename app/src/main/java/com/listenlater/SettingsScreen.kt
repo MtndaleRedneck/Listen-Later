@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
@@ -48,6 +50,8 @@ fun SettingsScreen(
     feedAvailable: Boolean,
     onCopyFeedLink: () -> Boolean,
     onSignOut: () -> Unit,
+    statusCentered: Boolean = false,
+    onStatusCentered: (Boolean) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -81,39 +85,42 @@ fun SettingsScreen(
                 )
             }
             Spacer(Modifier.height(6.dp))
-            // Tappable row (real 48dp target): opens the server's webpage.
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = serverUrl != null, onClickLabel = "Open server webpage", role = Role.Button) {
-                        val raw = serverUrl?.trim().orEmpty()
-                        val url = when {
-                            raw.isEmpty() -> null
-                            Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> raw
-                            raw.contains("://") -> null   // non-web scheme: never open
-                            else -> "https://$raw"
-                        }
-                        val opened = url != null && runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        }.isSuccess
-                        if (!opened) {
-                            Toast.makeText(context, "Couldn't open the server page", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            // Only the address pill is tappable (real 48dp target): opens the server's webpage.
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Server", color = Muted, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
-                Text(
-                    serverUrl?.replace(Regex("^https?://", RegexOption.IGNORE_CASE), "") ?: "Not set",
-                    color = if (serverUrl != null) Sage else Muted,
-                    fontSize = 14.sp,
-                    textDecoration = if (serverUrl != null) TextDecoration.Underline else TextDecoration.None,
-                    textAlign = TextAlign.End, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    val label = serverUrl?.replace(Regex("^https?://", RegexOption.IGNORE_CASE), "") ?: "Not set"
+                    val pillColor = if (serverUrl != null) Sage else Muted
+                    Box(
+                        Modifier.heightIn(min = 48.dp)
+                            .clickable(enabled = serverUrl != null, onClickLabel = "Open server webpage", role = Role.Button) {
+                                val raw = serverUrl?.trim().orEmpty()
+                                val url = when {
+                                    raw.isEmpty() -> null
+                                    Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> raw
+                                    raw.contains("://") -> null   // non-web scheme: never open
+                                    else -> "https://$raw"
+                                }
+                                val opened = url != null && runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }.isSuccess
+                                if (!opened) {
+                                    Toast.makeText(context, "Couldn't open the server page", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            label, color = pillColor, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(pillColor.copy(alpha = 0.12f))
+                                .border(1.dp, pillColor.copy(alpha = 0.38f), RoundedCornerShape(50))
+                                .padding(horizontal = 14.dp, vertical = 7.dp),
+                        )
+                    }
+                }
             }
             Spacer(Modifier.height(12.dp))
             Box(
@@ -165,6 +172,24 @@ fun SettingsScreen(
         }
         Spacer(Modifier.height(14.dp))
 
+        SettingsSection("Feed list") {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
+                    .clickable(onClickLabel = "Toggle centered status labels", role = Role.Switch) { onStatusCentered(!statusCentered) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("Center status labels", color = TextC, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (statusCentered) "Centered in the status column" else "Right-aligned (default)", color = Muted, fontSize = 12.sp)
+                }
+                androidx.compose.material3.Switch(
+                    checked = statusCentered, onCheckedChange = null,
+                    colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Sage, checkedThumbColor = Color.White),
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+
         SettingsSection("Feedback & bugs") {
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -177,10 +202,12 @@ fun SettingsScreen(
                     color = TextC, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                     lineHeight = 20.sp, modifier = Modifier.weight(1f),
                 )
-                Text("\u203A", color = Muted, fontSize = 20.sp)
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null, tint = Muted, modifier = Modifier.size(24.dp),
+                )
             }
-            Spacer(Modifier.height(6.dp))
-            Text("You see exactly what is sent before you send it.", color = Muted, fontSize = 12.sp)
         }
         Spacer(Modifier.height(14.dp))
 
@@ -188,6 +215,9 @@ fun SettingsScreen(
         SettingsSection("") {
             var checking by remember { mutableStateOf(false) }
             var result by remember { mutableStateOf("") }
+            LaunchedEffect(result) {
+                if (result == "You're up to date.") { delay(5000); result = "" }
+            }
             Box(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp))
                     .background(SageGradient)

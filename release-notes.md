@@ -1,3 +1,16 @@
+## What's new in 1.9.0
+
+November 24, 2026. A visual pass on the home and Settings screens to match BingeMote, plus clearer status labels.
+
+Improved:
+- Screen colors now follow the same surface shades as BingeMote.
+- Feed rows have thin dividers and a fixed status column. "Get again" and "Retry" are now tappable amber and red pills, and "In feed" stays plain green.
+- When the server can't be reached the top pill now shows a red dot and "Disconnected".
+- In Settings, only the server address is tappable, shown as a pill. The "Server" label and the rest of the row are no longer links.
+- Settings has a new switch to center the status labels in the feed list instead of right-aligning them.
+- The Feedback entry matches BingeMote: the extra line under it is gone and the arrow is larger.
+- "You're up to date." now disappears after 5 seconds.
+
 ## What's new in 1.8.0
 
 November 24, 2026. A fresh look for the home and Settings screens, and a new notification icon drawn from the app's real logo.
