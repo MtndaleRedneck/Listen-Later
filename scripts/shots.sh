@@ -125,6 +125,28 @@ shot v19-responsive-centered --ez demo true --ez centered true --ez queuestates 
 adb shell settings put system font_scale 1.0
 adb shell wm size reset
 adb shell wm density reset
+
+# v19 repeat timer: tap "Check for updates" (real network check), wait for "You're up to date.",
+# tap it again ~3s later, then confirm the line is still there >5s after the FIRST result
+# (so the second check restarted the countdown) and gone ~5s after the second.
+# Whole-second clock plus dump latency: margins are about 2s, reported as measured, not exact.
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5
+tap_text "Settings"; sleep 2
+has_utd() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -q "You're up to date."; }
+tap_text "Check for updates"
+T1=""
+for i in $(seq 1 20); do if has_utd; then T1=$(date +%s); break; fi; sleep 0.5; done
+if [ -z "$T1" ]; then echo "TIMER-RESTART: INCONCLUSIVE (no up-to-date line after first check)"; else
+  while [ $(( $(date +%s) - T1 )) -lt 3 ]; do sleep 0.3; done
+  tap_text "Check for updates"
+  sleep 4
+  T2=$(date +%s)
+  if has_utd; then echo "TIMER-RESTART first-result-age=$(( $(date +%s) - T1 ))s still visible"; adb exec-out screencap -p > $OUT/v19-timer-after-repeat.png; AGE1=$(( $(date +%s) - T1 )); else AGE1=-1; fi
+  # second result appeared at roughly T1+3..4s; wait until it should have cleared
+  sleep 8
+  if has_utd; then echo "TIMER-RESTART: FAIL line still visible $(( $(date +%s) - T1 ))s after first result"; else echo "TIMER-RESTART: cleared by $(( $(date +%s) - T1 ))s after first result (visible at $AGE1 s means restart; -1 means gone before ~5s: FAIL)"; fi
+fi
 ls -la $OUT
 adb shell wm size reset
 adb shell wm density reset

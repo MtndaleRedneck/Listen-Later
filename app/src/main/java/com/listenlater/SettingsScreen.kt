@@ -218,7 +218,10 @@ fun SettingsScreen(
             var result by remember {
                 mutableStateOf(if (BuildConfig.DEBUG) (context as? android.app.Activity)?.intent?.getStringExtra("updateResult") ?: "" else "")
             }
-            LaunchedEffect(result) {
+            // Keyed on a per-check counter, not on the text: a second identical result must
+            // restart the 5 second countdown, and clear-then-set within one frame can merge.
+            var resultSeq by remember { mutableStateOf(0) }
+            LaunchedEffect(resultSeq) {
                 if (result == "You're up to date.") { delay(5000); result = "" }
             }
             Box(
@@ -238,6 +241,7 @@ fun SettingsScreen(
                                 Updater.CheckOutcome.Unavailable
                             }
                             checking = false
+                            resultSeq++
                             when (outcome) {
                                 is Updater.CheckOutcome.Newer -> {
                                     result = "Version " + outcome.info.versionName + " is available."
