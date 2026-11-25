@@ -76,6 +76,14 @@ answer_external_anr() {
     set -- $N
     [ -n "$4" ] && adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
   fi
+  # The emulator's launcher can stay hung so the same dialog returns after every Wait (real runs
+  # 45659190054 and 45663287071: all 15 tries covered). Only when the dialog names the LAUNCHER,
+  # stop that process (never the app under test) so it restarts clean; the caller relaunches the app.
+  if echo "$UI" | grep -q "Pixel Launcher isn't responding"; then
+    echo "stopping the hung system launcher (not the app) so the dialog does not return"
+    adb shell am force-stop com.google.android.apps.nexuslauncher
+    sleep 3
+  fi
   return 0   # answering (or finding nothing to answer) is normal, never a failure
 }
 
