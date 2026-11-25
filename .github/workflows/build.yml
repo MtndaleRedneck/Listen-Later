@@ -134,9 +134,9 @@ jobs:
   publish:
     # Every release-correctness job must be green BEFORE the release is
     # created (I2 review): the publish is the last job, not a parallel one.
-    # upgrade-smoke is publish-dispatch-gated like this job, so on a real
-    # publish run all four needs have run; on any other run this job's own
-    # if is false and it never runs.
+    # upgrade-smoke runs on a main publish dispatch (real verdict) and, on a non-main
+    # upgrade_proof dispatch, as a negative signature proof only; this job's own if is
+    # false off main, so it never runs there and the tag/release are unreachable.
     needs: [build, release-smoke, migration-test, upgrade-smoke]
     concurrency:
       group: publish-release
@@ -217,13 +217,18 @@ jobs:
             --title "Listen Later $TAG" \
             --notes-file /tmp/notes.md
 
-  # In-place upgrade acceptance on the minified build (Gemini review): published
-  # 1.6.4 (vc13) with a queued share upgraded to the new vc14 APK. Real release
-  # signatures only, so it can run solely on a main publish run - branch builds
-  # carry the throwaway CI key and install -r would refuse the downgrade.
+  # In-place upgrade acceptance on the minified build (Gemini review): the latest published
+  # release and v1.6.4 (vc13), each with a queued share, upgraded to the new APK. The real
+  # verdict needs the real release signature, so it exists only on a main publish run. Branch
+  # builds carry the throwaway CI key, so a non-main upgrade_proof dispatch runs the same harness
+  # as a NEGATIVE SIGNATURE PROOF only (install -r must be refused); it is not an upgrade pass.
+  # timeout-minutes: runtime history of this job: 4.7 min when both baselines failed early;
+  # worst case with the 15-try loops is roughly 17 min incl. emulator boot, so 25 catches a
+  # hang without failing a healthy run.
   upgrade-smoke:
     needs: build
-    if: github.event_name == 'workflow_dispatch' && ((inputs.publish && github.ref == 'refs/heads/main') || (inputs.upgrade_proof && github.ref != 'refs/heads/main'))
+    timeout-minutes: 25
+    if: github.event_name == 'workflow_dispatch' && ((inputs.publish && github.ref == 'refs/heads/main') || (inputs.upgrade_proof && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -248,7 +253,7 @@ jobs:
           disable-animations: true
           script: ./scripts/upgrade-smoke.sh
         env:
-          UPGRADE_PROOF: ${{ (inputs.upgrade_proof && github.ref != 'refs/heads/main') && '1' || '' }}
+          UPGRADE_PROOF: ${{ (inputs.upgrade_proof && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main') && '1' || '' }}
       # Test-only evidence: emulator PNGs and text from the upgrade check (before/after the upgrade),
       # kept 1 day because run artifacts of a public repo are public. No APK or installer is ever uploaded here.
       - uses: actions/upload-artifact@v4

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Upgrade acceptance (publish runs only, where the new APK carries the REAL
-# release signature). Two baselines, each a real in-place upgrade over a PUBLISHED
+# Upgrade acceptance. The real verdict exists only on a main publish run, where the new APK
+# carries the REAL release signature. A non-main dispatch with upgrade_proof=true runs the same
+# harness in NEGATIVE SIGNATURE PROOF mode (UPGRADE_PROOF=1): it proves the harness and that
+# signature enforcement refuses a throwaway-signed APK, and is NOT an upgrade test pass.
+# Two baselines, each a real in-place upgrade over a PUBLISHED
 # release: the CURRENT latest release (read from the releases API at run time;
-# v1.7.0 / vc14 when this was written) and the older v1.6.4 (vc13), which keeps
+# a published tag such as v1.8.0 / vc15) and the older v1.6.4 (vc13), which keeps
 # the earlier migration path covered. For each baseline: install the published
 # APK, queue a share with no session, show that the queue exists on the OLD
 # version, force-stop, upgrade in place to the new minified build, and prove the
@@ -50,7 +53,7 @@ dump_ui() {
 # The queue proof: a node whose text is the waiting copy AND belongs to the app's package, in a
 # fresh dump, with the app's window focused. Text from a system window or a stale file does not count.
 waiting_proof() {
-  dump_ui || return 1
+  [ "$1" = reuse ] || dump_ui || return 1   # "reuse": judge the dump already in $UI (no second dump)
   echo "$UI" | grep -o '<node[^>]*text="[^"]*1 video is waiting[^"]*"[^>]*>' | grep -q "package=\"$PKG\"" || return 1
   adb shell dumpsys window | grep -m1 mCurrentFocus | grep -q "$PKG" || return 1
   return 0
@@ -68,6 +71,25 @@ answer_external_anr() {
     set -- $N
     [ -n "$4" ] && adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
   fi
+  return 0   # answering (or finding nothing to answer) is normal, never a failure
+}
+
+# Own-app failure evidence by process and logcat (not by dialog language). Sets APP_FAIL to the
+# reason and returns 0 when found. $1 = the pid seen first (empty = none yet).
+app_failure_evidence() {
+  APP_FAIL=""
+  local CURP LCX
+  CURP=$(adb shell pidof $PKG | tr -d '\r\n')
+  if [ -n "$1" ] && [ "$CURP" != "$1" ]; then
+    APP_FAIL="app process changed on the OLD version ($1 -> ${CURP:-none}) - restart/crash"; return 0
+  fi
+  LCX=$(adb logcat -d)
+  if echo "$LCX" | grep -q "ANR in com.listenlater" \
+     || echo "$LCX" | grep -A8 "FATAL EXCEPTION" | grep -q "Process: com.listenlater" \
+     || echo "$LCX" | grep "Fatal signal" | grep -q "com.listenlater"; then
+    APP_FAIL="app ANR/crash evidence in logcat on the OLD version - not dismissible"; return 0
+  fi
+  return 1
 }
 
 # Print what is on screen: which packages own windows and the texts, so a launcher ANR
@@ -123,43 +145,41 @@ run_one() {
   BEFORE=0
   BEFORE_REASON=""
   BPID=""
-  # 15 tries x ~4s (was 10 tries, i.e. the budget grew from ~40s to ~60s plus dump time) so one
-  # answered launcher ANR still leaves time for the waiting copy to show.
+  # 15 tries (was 10), each with a 4s sleep: the sleep floor grows from 40s to 60s. Each try also
+  # runs pidof, logcat and a ui dump with no adb timeouts, so total time is not bounded here;
+  # the upgrade-smoke job's timeout-minutes in build.yml is the hang bound.
   for i in $(seq 1 15); do
     sleep 4
-    # The app's own failure is a defect, never dismissed into a pass. Detected by package/process,
-    # not only by the English dialog title: process id change, or ANR/crash evidence for
-    # com.listenlater in logcat (cleared before this old install's share). The title check stays as
-    # an extra net (the label is "Listen Later" in v1.6.4, v1.8.0 and 1.9.0 manifests, checked).
-    CUR=$(adb shell pidof $PKG | tr -d '\r\n')
-    [ -z "$BPID" ] && BPID=$CUR
-    if [ -n "$BPID" ] && [ "$CUR" != "$BPID" ]; then
-      BEFORE_REASON="app process changed on the OLD version ($BPID -> ${CUR:-none}) - restart/crash"; break
-    fi
-    LC=$(adb logcat -d)
-    if echo "$LC" | grep -q "ANR in com.listenlater" \
-       || echo "$LC" | grep -A8 "FATAL EXCEPTION" | grep -q "Process: com.listenlater" \
-       || echo "$LC" | grep "Fatal signal" | grep -q "com.listenlater"; then
-      BEFORE_REASON="app ANR/crash evidence in logcat on the OLD version - not dismissible"; break
-    fi
-    if dump_ui && echo "$UI" | grep -q "Listen Later isn't responding\|Listen Later keeps stopping"; then
+    [ -z "$BPID" ] && BPID=$(adb shell pidof $PKG | tr -d '\r\n')
+    # ONE dump per try: the own-app title check, the waiting check and the external-dialog
+    # decision all read this same $UI, so they cannot disagree about what was on screen.
+    DUMP_OK=1; dump_ui || DUMP_OK=0
+    # The app's own failure is a defect, never dismissed into a pass: by process/logcat first
+    # (not English-only), then the dialog title as an extra net (label "Listen Later" in v1.6.4,
+    # v1.8.0 and 1.9.0 manifests).
+    if app_failure_evidence "$BPID"; then BEFORE_REASON="$APP_FAIL"; break; fi
+    if [ "$DUMP_OK" = 1 ] && echo "$UI" | grep -q "Listen Later isn't responding\|Listen Later keeps stopping"; then
       BEFORE_REASON="the APP's own ANR/crash dialog on the OLD version - not dismissible"; break
     fi
-    if waiting_proof; then BEFORE=1; break; fi
-    # Answer ONLY an external "isn't responding" window (not the app's, checked above) with Wait,
-    # then re-focus the app and look again (bounded by the 15 tries).
-    if echo "$UI" | grep -q "isn't responding"; then
+    if [ "$DUMP_OK" = 1 ] && waiting_proof reuse; then BEFORE=1; break; fi
+    # Answer ONLY an external "isn't responding" window with Wait. The pid/logcat guards are
+    # re-run immediately before the tap so an app ANR that appeared since the dump is not tapped.
+    if [ "$DUMP_OK" = 1 ] && echo "$UI" | grep -q "isn't responding"; then
+      if app_failure_evidence "$BPID"; then BEFORE_REASON="$APP_FAIL"; break; fi
       echo "before-attempt $i:"; answer_external_anr
     fi
     adb shell am start -n $PKG/.MainActivity >/dev/null 2>&1
   done
-  [ -z "$BEFORE_REASON" ] || echo "UPGRADE SMOKE FAIL ($OLD_TAG vc$OLD_VC): app-side failure before the upgrade: $BEFORE_REASON"
   echo "BEFORE upgrade ($OLD_TAG vc$OLD_VC): waiting copy shown on the old version = $BEFORE"
   shot "before-$OLD_TAG-vc$OLD_VC"
   if [ "$BEFORE" != 1 ]; then
     # SETUP failure, not an upgrade verdict: without the seeded queue confirmed on the old
     # version the after-upgrade check cannot say anything about queue survival.
-    echo "UPGRADE SMOKE SETUP FAIL ($OLD_TAG vc$OLD_VC): the seeded queued share was NOT confirmed on the old version before the upgrade, so no upgrade verdict is possible for this baseline"
+    if [ -n "$BEFORE_REASON" ]; then
+      echo "UPGRADE SMOKE FAIL ($OLD_TAG vc$OLD_VC): app-side failure before the upgrade: $BEFORE_REASON"
+    else
+      echo "UPGRADE SMOKE SETUP FAIL ($OLD_TAG vc$OLD_VC): the seeded queued share was NOT confirmed on the old version before the upgrade, so no upgrade verdict is possible for this baseline"
+    fi
     show_screen
     return 1
   fi
@@ -265,4 +285,8 @@ if [ -n "$FAILED" ]; then
   echo "UPGRADE SMOKE FAIL: baselines failed:$FAILED (of: $BASELINES)"
   exit 1
 fi
-echo "UPGRADE SMOKE TEST PASS ($BASELINES)"
+if [ "${UPGRADE_PROOF:-}" = 1 ]; then
+  echo "NEGATIVE SIGNATURE PROOF ONLY ($BASELINES): harness ran, install -r refused a throwaway-signed APK. This is NOT an UPGRADE SMOKE TEST PASS; no upgrade, signer-continuity or queue-survival verdict."
+else
+  echo "UPGRADE SMOKE TEST PASS ($BASELINES)"
+fi
