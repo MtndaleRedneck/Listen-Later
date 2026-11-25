@@ -69,19 +69,8 @@ object Feedback {
         displayInfo(ctx),
     )
 
-    /** Font scale, density and window size: the bits that explain a layout bug. Same line BingeMote sends. */
-    private fun displayInfo(ctx: android.content.Context): String = try {
-        val cfg = ctx.resources.configuration
-        val dm = ctx.resources.displayMetrics
-        val dpiName = when {
-            dm.densityDpi <= 240 -> "hdpi"
-            dm.densityDpi <= 320 -> "xhdpi"
-            dm.densityDpi <= 480 -> "xxhdpi"
-            else -> "xxxhdpi"
-        }
-        "font scale %.2f, %d dpi (%s), screen %dx%d dp".format(
-            cfg.fontScale, dm.densityDpi, dpiName, cfg.screenWidthDp, cfg.screenHeightDp)
-    } catch (e: Exception) { "" }
+    /** Same display line BumpLog sends: font scale, density, screen size in dp and pixels. */
+    private fun displayInfo(ctx: android.content.Context): String = try { DisplayInfo.current(ctx) } catch (e: Exception) { "" }
 }
 
 @Composable
