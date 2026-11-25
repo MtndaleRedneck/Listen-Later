@@ -157,12 +157,19 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
                     if (connected) {
                         Text("Connected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
                     } else {
-                        Text("Disconnected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+                        // "Disconnected" is long: shrink the text until it fits the free header space (down to 9sp)
+                        // instead of clipping it, at any phone width or font scale.
+                        var discSize by remember(maxWidth) { mutableStateOf(if (compact) 12f else 13f) }
+                        Text(
+                            "Disconnected", fontSize = discSize.sp, fontWeight = FontWeight.SemiBold, color = TextC,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                            onTextLayout = { if (it.didOverflowWidth && discSize > 9f) discSize -= 0.5f },
+                        )
                     }
                 }
             }
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(6.dp))
         // 40dp visual tile inside a real 48dp touch target.
         Box(
             Modifier.size(48.dp).clip(RoundedCornerShape(11.dp))
@@ -180,9 +187,9 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
 /** Fixed-width status column so every status ends at the same right edge (or centers, per the Settings toggle). */
 @Composable
 private fun StatusColumn(centered: Boolean, content: @Composable () -> Unit) {
-    // Never narrower than 112dp, and wide enough for a pill at large font scales.
+    // One fixed column width shared by every row (so centered mode lines up), growing with the font scale.
     val fs = androidx.compose.ui.platform.LocalConfiguration.current.fontScale
-    Box(Modifier.widthIn(min = 112.dp, max = (140f * maxOf(1f, fs)).dp), contentAlignment = if (centered) Alignment.Center else Alignment.CenterEnd) { content() }
+    Box(Modifier.width((128f * maxOf(1f, fs)).dp), contentAlignment = if (centered) Alignment.Center else Alignment.CenterEnd) { content() }
 }
 
 /** Tonal pill (12% fill, 38% border) in a real 48dp touch target. */

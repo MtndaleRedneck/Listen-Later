@@ -126,27 +126,34 @@ adb shell settings put system font_scale 1.0
 adb shell wm size reset
 adb shell wm density reset
 
-# v19 repeat timer: tap "Check for updates" (real network check), wait for "You're up to date.",
-# tap it again ~3s later, then confirm the line is still there >5s after the FIRST result
-# (so the second check restarted the countdown) and gone ~5s after the second.
-# Whole-second clock plus dump latency: margins are about 2s, reported as measured, not exact.
+# v19 repeat timer MEASUREMENT (not a gate, not exact proof): real network check twice.
+# uiautomator dumps take ~2s each, so ages carry about +-2s. Prints a time series of
+# whether "You're up to date." is visible, relative to when it was first seen.
 adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5
 tap_text "Settings"; sleep 2
 has_utd() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -q "You're up to date."; }
 tap_text "Check for updates"
+CX=$(( (X1+X2)/2 )); CY=$(( (Y1+Y2)/2 ))
 T1=""
-for i in $(seq 1 20); do if has_utd; then T1=$(date +%s); break; fi; sleep 0.5; done
-if [ -z "$T1" ]; then echo "TIMER-RESTART: INCONCLUSIVE (no up-to-date line after first check)"; else
-  while [ $(( $(date +%s) - T1 )) -lt 3 ]; do sleep 0.3; done
-  tap_text "Check for updates"
-  sleep 4
-  T2=$(date +%s)
-  if has_utd; then echo "TIMER-RESTART first-result-age=$(( $(date +%s) - T1 ))s still visible"; adb exec-out screencap -p > $OUT/v19-timer-after-repeat.png; AGE1=$(( $(date +%s) - T1 )); else AGE1=-1; fi
-  # second result appeared at roughly T1+3..4s; wait until it should have cleared
-  sleep 8
-  if has_utd; then echo "TIMER-RESTART: FAIL line still visible $(( $(date +%s) - T1 ))s after first result"; else echo "TIMER-RESTART: cleared by $(( $(date +%s) - T1 ))s after first result (visible at $AGE1 s means restart; -1 means gone before ~5s: FAIL)"; fi
+for i in $(seq 1 20); do if has_utd; then T1=$(date +%s); break; fi; done
+if [ -z "$T1" ]; then echo "TIMER-MEASURE: no up-to-date line seen after the first check"; else
+  adb shell input tap $CX $CY
+  echo "TIMER-MEASURE: first result seen at age 0 (+-2s); second check tapped at age $(( $(date +%s) - T1 ))s"
+  for i in $(seq 1 6); do
+    if has_utd; then V=visible; else V=gone; fi
+    echo "TIMER-MEASURE: age $(( $(date +%s) - T1 ))s after first-seen: $V"
+  done
 fi
+# Centered and right-aligned feed rows with every episode status (scrolled to the bottom).
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez centered true; sleep 6
+adb shell input swipe 720 2000 720 700; sleep 1
+adb exec-out screencap -p > $OUT/v19-episodes-centered.png
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 6
+adb shell input swipe 720 2000 720 700; sleep 1
+adb exec-out screencap -p > $OUT/v19-episodes-right.png
 ls -la $OUT
 adb shell wm size reset
 adb shell wm density reset
