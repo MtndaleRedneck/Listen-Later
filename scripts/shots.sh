@@ -64,7 +64,7 @@ tap_text "Send feedback, report a bug, or suggest a feature" || tap_text "Feedba
 adb exec-out screencap -p > $OUT/nav-2-feedback.png
 tap_text "Back"; sleep 2
 adb exec-out screencap -p > $OUT/nav-3-back-to-settings-should-match-1.png
-tap_text "Back"; sleep 2
+adb shell input keyevent KEYCODE_BACK; sleep 2
 adb exec-out screencap -p > $OUT/nav-4-home.png
 tap_text "Settings"; sleep 2
 adb exec-out screencap -p > $OUT/nav-5-settings-fresh-should-be-top.png
