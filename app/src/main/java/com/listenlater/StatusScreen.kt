@@ -73,6 +73,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -131,7 +132,7 @@ private val TopArrowIcon: ImageVector = ImageVector.Builder(
 private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     val ctx = LocalContext.current
     val icon = remember { ctx.packageManager.getApplicationIcon(ctx.packageName).toImageBitmap() }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 18.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 0.dp, end = 0.dp, top = 12.dp, bottom = 12.dp)) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
         // Narrow phone plus a large font scale: the title would take the width the status pill needs
@@ -181,33 +182,28 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
                 }
             }
         }
-        Spacer(Modifier.width(4.dp))
-        // 40dp visual tile inside a real 48dp touch target.
-        Box(
-            Modifier.size(48.dp).clip(RoundedCornerShape(11.dp))
-                .semantics { contentDescription = "Settings" }
-                .clickable(role = Role.Button, onClick = onSettings),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(color = NavBg, shape = RoundedCornerShape(11.dp), modifier = Modifier.size(40.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Settings, contentDescription = null, tint = Sage) }
-            }
+        Spacer(Modifier.width(8.dp))
+        HeaderIconButton(onSettings, "Settings") {
+            Icon(Icons.Default.Settings, contentDescription = null, tint = Sage)
         }
     }
 }
 
-/** Fixed-width status column so every status ends at the same right edge (or centers, per the Settings toggle). */
+/** Fixed-width status column so every status ends at the same right edge. */
 @Composable
-private fun StatusColumn(centered: Boolean, content: @Composable () -> Unit) {
+private fun StatusColumn(content: @Composable () -> Unit) {
     // One fixed column width shared by every row (so centered mode lines up), growing with the font scale.
     val fs = androidx.compose.ui.platform.LocalConfiguration.current.fontScale
-    Box(Modifier.width((128f * fs.coerceIn(1f, 1.2f)).dp), contentAlignment = if (centered) Alignment.Center else Alignment.CenterEnd) { content() }
+    Box(Modifier.width((128f * fs.coerceIn(1f, 1.2f)).dp), contentAlignment = Alignment.CenterEnd) { content() }
 }
 
-/** Tonal pill (12% fill, 38% border) in a real 48dp touch target. */
+/** Tonal pill (12% fill, 38% border) in a real 48dp touch target. Sinks on press and ticks like every button. */
 @Composable
-fun StatusPill(label: String, color: Color, textColor: Color = color, modifier: Modifier = Modifier) {
-    Box(modifier.heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+fun StatusPill(label: String, color: Color, textColor: Color = color, enabled: Boolean = true, onClick: () -> Unit) {
+    PressTile(
+        onTap = onClick, background = ClearBrush, corner = 24.dp, enabled = enabled, fill = false, minTouch = 48.dp, lift = false,
+        onClickLabel = label,
+    ) {
         Text(
             label, fontSize = 13.sp, color = textColor, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false,
             modifier = Modifier.clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.12f))
@@ -242,7 +238,6 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     var feedUrl by remember { mutableStateOf(store.feedUrl) }
     var updateUi by remember { mutableStateOf<UpdateUi?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
-    var statusCentered by remember { mutableStateOf(store.statusCentered) }
     var subScreen by rememberSaveable { mutableStateOf("") } // "", "settings" or "feedback"
     var retryingId by remember { mutableStateOf<String?>(null) }
     var gettingId by remember { mutableStateOf<String?>(null) }
@@ -478,8 +473,6 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             feedAvailable = feedUrl != null,
             onCopyFeedLink = { copyFeedLink() },
             onSignOut = { signOutAsk = true },
-            statusCentered = statusCentered,
-            onStatusCentered = { statusCentered = it; store.statusCentered = it },
         )
     } else if (subScreen == "feedback") {
         FeedbackScreen(onBack = { subScreen = "settings" })
@@ -499,12 +492,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
         indicator = { GrowingSpinnerIndicator(ptrState, ptrRefreshing, Modifier.align(Alignment.TopCenter)) }
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp)
+            modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
         ) {
-            Spacer(Modifier.height(2.dp))
             AppHeader(onSettings = { subScreen = "settings" }, connected = !loadFailed)
             if (!loading && !hasRows) {
-                Spacer(Modifier.height(14.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = Card), shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.weight(1f)) {
                     Column(
@@ -527,7 +518,6 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             }
 
             if (hasRows) {
-                Spacer(Modifier.height(14.dp))
                 Box(
                     Modifier.weight(1f)
                         .shadow(4.dp, RoundedCornerShape(20.dp))
@@ -554,7 +544,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                     )
                                     if (q.title.isEmpty() && id != null) Text(id, fontSize = 12.sp, color = Muted)
                                 }
-                                StatusColumn(statusCentered) {
+                                StatusColumn {
                                 Text(
                                     when {
                                         store.needsLogin -> "Waiting for sign-in"
@@ -568,7 +558,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                     // A long status wraps within its own bounded column instead
                                     // of squeezing the title into uselessness; no ellipsis -
                                     // the full reason stays readable at any font scale.
-                                    textAlign = if (statusCentered) TextAlign.Center else TextAlign.End,
+                                    textAlign = TextAlign.End,
                                 )
                                 }
                             }
@@ -590,16 +580,22 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                         Text(sk.reason, fontSize = 12.sp, color = Muted)
                                     }
                                 }
-                                StatusColumn(statusCentered) {
-                                Column(horizontalAlignment = if (statusCentered) Alignment.CenterHorizontally else Alignment.End) {
+                                StatusColumn {
+                                Column(horizontalAlignment = Alignment.End) {
                                     Text("Couldn't get it", fontSize = 13.sp, color = Muted)
-                                    Text("Try again", fontSize = 13.sp, color = SageText, fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.clickable {
+                                    PressTile(
+                                        onTap = {
                                             queueStore.removeSkipped(sk.url)
                                             queueStore.enqueueShare(sk.url, sk.title)
                                             Notifier.cancelSkipped(context, sk.url)
                                             ShareWorker.enqueue(context, 0L)
-                                        }.padding(horizontal = 12.dp, vertical = 12.dp))
+                                        },
+                                        background = ClearBrush, corner = 12.dp, fill = false, minTouch = 48.dp, lift = false,
+                                        onClickLabel = "Try again",
+                                    ) {
+                                        Text("Try again", fontSize = 13.sp, color = SageText, fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp))
+                                    }
                                 }
                                 }
                             }
@@ -614,16 +610,17 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             ) {
                                 Text(ep.title, fontSize = 15.sp, color = TextC,
                                     modifier = Modifier.weight(1f).padding(end = 10.dp))
-                                StatusColumn(statusCentered) {
+                                StatusColumn {
                                 when {
                                     ep.status == "COMPLETED" ->
                                         Text("In feed", fontSize = 13.sp, color = SageText, fontWeight = FontWeight.SemiBold)
                                     ep.status == "FAILED" ->
                                         StatusPill(
                                             if (retryingId == ep.id) "Retrying..." else "Retry", Red, RedText,
-                                            modifier = Modifier.clickable(enabled = retryingId == null) {
-                                                val server = store.server ?: return@clickable
-                                                val token = store.token ?: return@clickable
+                                            enabled = retryingId == null,
+                                            onClick = {
+                                                val server = store.server ?: return@StatusPill
+                                                val token = store.token ?: return@StatusPill
                                                 val api = Api(server, token)
                                                 retryingId = ep.id
                                                 scope.launch {
@@ -644,9 +641,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                         Text("Downloading", fontSize = 13.sp, color = Muted)
                                     else -> // READY: cleaned up on the server, not in the feed
                                         StatusPill(if (gettingId == ep.id) "Getting..." else "Get again", Yellow,
-                                            modifier = Modifier.clickable(enabled = gettingId == null) {
-                                                val server = store.server ?: return@clickable
-                                                val token = store.token ?: return@clickable
+                                            enabled = gettingId == null,
+                                            onClick = {
+                                                val server = store.server ?: return@StatusPill
+                                                val token = store.token ?: return@StatusPill
                                                 val api = Api(server, token)
                                                 gettingId = ep.id
                                                 scope.launch {
@@ -675,11 +673,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 4 },
                         exit = fadeOut(tween(150)),
                     ) {
-                        Surface(
-                            onClick = { scope.launch { listScroll.animateScrollTo(0, tween(350, easing = FastOutSlowInEasing)) } },
-                            shape = RoundedCornerShape(50),
-                            color = Card2,
-                            border = BorderStroke(1.dp, Color(0xFF46464E)),
+                        PressTile(
+                            onTap = { scope.launch { listScroll.animateScrollTo(0, tween(350, easing = FastOutSlowInEasing)) } },
+                            background = Brush.verticalGradient(listOf(Card2, Card2)), corner = 24.dp, fill = false, lift = false,
+                            border = BorderStroke(1.dp, Color(0xFF46464E)), onClickLabel = "Back to top",
                         ) {
                             Row(
                                 Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
@@ -707,10 +704,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             title = { Text("Sign out?", color = TextC) },
             text = { Text("Videos you share will wait until you sign in again.", color = Muted) },
             confirmButton = {
-                TextButton({ signOutAsk = false; onSignedOut() }) { Text("Sign out", color = Sage) }
+                HTextButton({ signOutAsk = false; onSignedOut() }) { Text("Sign out", color = Sage) }
             },
             dismissButton = {
-                TextButton({ signOutAsk = false }) { Text("Cancel", color = Muted) }
+                HTextButton({ signOutAsk = false }) { Text("Cancel", color = Muted) }
             },
         )
     }
@@ -743,13 +740,13 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         Spacer(Modifier.height(8.dp))
                         Text("Android will ask you to confirm the install.", color = Muted)
                         Spacer(Modifier.height(4.dp))
-                        TextButton({ queueStore.skippedUpdate = u.info.versionName; updateUi = null }) {
+                        HTextButton({ queueStore.skippedUpdate = u.info.versionName; updateUi = null }) {
                             Text("Skip this version", color = Sage)
                         }
                     }
                 },
-                confirmButton = { TextButton({ startUpdate(u.info) }) { Text("Update", color = Sage) } },
-                dismissButton = { TextButton({ updateUi = null }) { Text("Later", color = Muted) } },
+                confirmButton = { HTextButton({ startUpdate(u.info) }) { Text("Update", color = Sage) } },
+                dismissButton = { HTextButton({ updateUi = null }) { Text("Later", color = Muted) } },
             )
             is UpdateUi.Downloading -> AlertDialog(
                 onDismissRequest = {},
@@ -763,14 +760,14 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         trackColor = Card
                     )
                 },
-                confirmButton = { TextButton({ updateJob?.cancel() }) { Text("Cancel", color = Muted) } },
+                confirmButton = { HTextButton({ updateJob?.cancel() }) { Text("Cancel", color = Muted) } },
             )
             is UpdateUi.Failed -> AlertDialog(
                 onDismissRequest = { updateUi = null },
                 containerColor = Card2,
                 title = { Text("Update not installed", color = TextC) },
                 text = { Text(u.message, color = Muted) },
-                confirmButton = { TextButton({ updateUi = null }) { Text("OK", color = Sage) } },
+                confirmButton = { HTextButton({ updateUi = null }) { Text("OK", color = Sage) } },
             )
         }
     }

@@ -8,7 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -33,7 +33,7 @@ private const val MAX_TEXT = 3000
 private const val MAX_ENCODED = 4500
 
 /** The only things a feedback report carries besides what he typed. No server address or sign-in details. */
-data class FeedbackContext(val appVersion: String, val androidVersion: String, val phoneModel: String)
+data class FeedbackContext(val appVersion: String, val androidVersion: String, val phoneModel: String, val display: String = "")
 
 object Feedback {
     /** Trims the text so the encoded link stays well under the roughly 8 KB web servers accept. The preview shows this same trimmed text. */
@@ -45,37 +45,54 @@ object Feedback {
 
     /** Exactly what is sent, shown before he taps. */
     fun preview(text: String, c: FeedbackContext): String =
-        "Message:\n${clean(text).ifEmpty { "(nothing written yet)" }}\n\nApp version: ${c.appVersion}\nAndroid version: ${c.androidVersion}\nPhone model: ${c.phoneModel}"
+        "Message:\n${clean(text).ifEmpty { "(nothing written yet)" }}\n\nApp version: ${c.appVersion}\nAndroid version: ${c.androidVersion}\nPhone model: ${c.phoneModel}${displayLine(c)}"
+
+    private fun displayLine(c: FeedbackContext) = if (c.display.isBlank()) "" else "\nDisplay: ${c.display}"
 
     fun githubUrl(text: String, c: FeedbackContext): String {
         val t = clean(text)
         val title = "Feedback: " + t.lineSequence().firstOrNull().orEmpty().take(60)
-        val body = "$t\n\n---\nApp version: ${c.appVersion}\nAndroid version: ${c.androidVersion}\nPhone model: ${c.phoneModel}"
+        val body = "$t\n\n---\nApp version: ${c.appVersion}\nAndroid version: ${c.androidVersion}\nPhone model: ${c.phoneModel}${displayLine(c)}"
         return "$REPO_ISSUES/new?title=${enc(title)}&body=${enc(body)}"
     }
 
     fun formUrl(text: String, c: FeedbackContext): String =
-        "$BUG_FORM_URL?usp=pp_url&entry.2097207885=${enc(clean(text))}&entry.1328057796=${enc(c.phoneModel)}" +
+        "$BUG_FORM_URL?usp=pp_url&entry.2097207885=${enc(clean(text) + (if (c.display.isBlank()) "" else "\n\nDisplay: ${c.display}"))}&entry.1328057796=${enc(c.phoneModel)}" +
             "&entry.166345919=${enc(c.androidVersion)}&entry.2138889044=${enc(c.appVersion)}"
 
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
-    fun context() = FeedbackContext(
+    fun context(ctx: android.content.Context) = FeedbackContext(
         BuildConfig.VERSION_NAME,
-        android.os.Build.VERSION.RELEASE,
+        "${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})",
         listOf(android.os.Build.MANUFACTURER, android.os.Build.MODEL).filter { it.isNotBlank() }.joinToString(" "),
+        displayInfo(ctx),
     )
+
+    /** Font scale, density and window size: the bits that explain a layout bug. Same line BingeMote sends. */
+    private fun displayInfo(ctx: android.content.Context): String = try {
+        val cfg = ctx.resources.configuration
+        val dm = ctx.resources.displayMetrics
+        val dpiName = when {
+            dm.densityDpi <= 240 -> "hdpi"
+            dm.densityDpi <= 320 -> "xhdpi"
+            dm.densityDpi <= 480 -> "xxhdpi"
+            else -> "xxxhdpi"
+        }
+        "font scale %.2f, %d dpi (%s), screen %dx%d dp".format(
+            cfg.fontScale, dm.densityDpi, dpiName, cfg.screenWidthDp, cfg.screenHeightDp)
+    } catch (e: Exception) { "" }
 }
 
 @Composable
 fun FeedbackScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
     var text by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
-    val c = remember { Feedback.context() }
+    val c = remember { Feedback.context(ctx) }
     fun open(url: String) = runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
     Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextC) }
+            HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
             Spacer(Modifier.width(12.dp))
             Text("Feedback", color = TextC, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
@@ -92,7 +109,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = TextC, unfocusedTextColor = TextC,
-                    focusedBorderColor = Sage, unfocusedBorderColor = Card2,
+                    focusedBorderColor = Sage, unfocusedBorderColor = TrackGray,
                     cursorColor = Sage,
                 ),
             )
@@ -101,8 +118,6 @@ fun FeedbackScreen(onBack: () -> Unit) {
 
         FeedbackCard("What will be sent") {
             Text(Feedback.preview(text, c), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("No server address or sign-in details are included. Nothing is sent until you tap a button below, and then it opens in your browser for you to review and submit.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
         }
         Spacer(Modifier.height(14.dp))
 
@@ -124,7 +139,6 @@ fun FeedbackScreen(onBack: () -> Unit) {
                 else open(Feedback.formUrl(text, c))
             }
         }
-        Spacer(Modifier.height(28.dp))
     }
 }
 
@@ -141,15 +155,14 @@ private fun FeedbackCard(title: String = "", content: @Composable ColumnScope.()
     }
 }
 
-/** The filled sage action button, app-wide style. */
+/** The filled accent action button, app-wide style. */
 @Composable
 private fun FeedbackButton(label: String, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Sage, contentColor = Color.White),
-        modifier = Modifier.fillMaxWidth().height(46.dp),
+    PressTile(
+        onTap = onClick, onClickLabel = label,
+        background = SageGradient, corner = 14.dp,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
-        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = OnSage, fontSize = 14.sp, fontWeight = FontWeight.Bold)
     }
 }

@@ -363,14 +363,12 @@ fun SignInScreen(store: CredStore, onLoggedIn: () -> Unit) {
                         Text(it, color = Yellow, fontSize = 13.sp)
                     }
                     Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = { submit() },
-                        enabled = !loading,
-                        colors = ButtonDefaults.buttonColors(containerColor = Sage, contentColor = androidx.compose.ui.graphics.Color.White),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
+                    PressTile(
+                        onTap = { submit() }, enabled = !loading, onClickLabel = "Log in",
+                        background = SageGradient, corner = 14.dp,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
                     ) {
-                        Text(if (loading) "Signing in..." else "Log in", fontWeight = FontWeight.SemiBold)
+                        Text(if (loading) "Signing in..." else "Log in", color = OnSage, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

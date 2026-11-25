@@ -1,3 +1,18 @@
+## What's new in 1.10.0
+
+November 25, 2026. Buttons now feel like BingeMote's, and Settings has an accent color picker.
+
+New:
+- Accent color picker in Settings with eight colors. Your pick changes the buttons, highlights and the status dot across the app.
+- Every button sinks slightly when pressed and gives a small tick. A new "Vibrate on press" switch in Settings turns the tick off.
+
+Improved:
+- The server address in Settings is a clean rounded button, without the square highlight.
+- Less empty space under the header on the home and Settings screens, and under the last card in Settings.
+- Status labels in the feed list are always right-aligned, so the "Feed list" card and its switch are gone.
+- Feedback screen: the back arrow matches BingeMote's, the extra note under "What will be sent" is gone, and the display details (font scale, density, screen size) are included to help explain layout problems.
+- Red and the text-field outline now use the same shades as BingeMote.
+
 ## What's new in 1.9.0
 
 November 24, 2026. A visual pass on the home and Settings screens to match BingeMote, plus clearer status labels.

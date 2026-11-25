@@ -12,7 +12,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.selected
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,8 +54,6 @@ fun SettingsScreen(
     feedAvailable: Boolean,
     onCopyFeedLink: () -> Boolean,
     onSignOut: () -> Unit,
-    statusCentered: Boolean = false,
-    onStatusCentered: (Boolean) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -60,17 +61,7 @@ fun SettingsScreen(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // 40dp visual tile inside a real 48dp touch target.
-            Box(
-                Modifier.size(48.dp).clip(RoundedCornerShape(11.dp))
-                    .semantics { contentDescription = "Back" }
-                    .clickable(role = Role.Button, onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Surface(color = NavBg, shape = RoundedCornerShape(11.dp), modifier = Modifier.size(40.dp)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = TextC) }
-                }
-            }
+            HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
             Spacer(Modifier.width(12.dp))
             Text("Settings", color = TextC, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -93,27 +84,27 @@ fun SettingsScreen(
                     val label = serverUrl?.replace(Regex("^https?://", RegexOption.IGNORE_CASE), "") ?: "Not set"
                     val pillColor = if (serverUrl != null) Sage else Muted
                     val pillText = if (serverUrl != null) SageText else MutedText
-                    Box(
-                        Modifier.heightIn(min = 48.dp)
-                            .clickable(enabled = serverUrl != null, onClickLabel = "Open server webpage", role = Role.Button) {
-                                val raw = serverUrl?.trim().orEmpty()
-                                val url = when {
-                                    raw.isEmpty() -> null
-                                    Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> raw
-                                    raw.contains("://") -> null   // non-web scheme: never open
-                                    else -> "https://$raw"
-                                }
-                                val opened = url != null && runCatching {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                }.isSuccess
-                                if (!opened) {
-                                    Toast.makeText(context, "Couldn't open the server page", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
+                    PressTile(
+                        onTap = {
+                            val raw = serverUrl?.trim().orEmpty()
+                            val url = when {
+                                raw.isEmpty() -> null
+                                Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> raw
+                                raw.contains("://") -> null   // non-web scheme: never open
+                                else -> "https://$raw"
+                            }
+                            val opened = url != null && runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }.isSuccess
+                            if (!opened) {
+                                Toast.makeText(context, "Couldn't open the server page", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = serverUrl != null, onClickLabel = "Open server webpage",
+                        background = ClearBrush, corner = 24.dp, fill = false, minTouch = 48.dp, lift = false,
                     ) {
                         Text(
                             label, color = pillText, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -125,14 +116,12 @@ fun SettingsScreen(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Box(
-                Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp))
-                    .background(DarkTileGradient)
-                    .clickable(onClickLabel = "Sign out", role = Role.Button) { onSignOut() }
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center,
+            PressTile(
+                onTap = onSignOut, onClickLabel = "Sign out",
+                background = DarkTileGradient, corner = 14.dp, lift = false,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
-                Text("Sign out", color = Red, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Sign out", color = RedText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -141,27 +130,19 @@ fun SettingsScreen(
         // yet the button is disabled and the subtitle says why - never a silent no-op.
         var copied by remember { mutableStateOf(false) }
         val resetJob = remember { arrayOfNulls<Job>(1) }
-        Box(
-            Modifier.fillMaxWidth().heightIn(min = 62.dp).clip(RoundedCornerShape(18.dp))
-                .background(SageGradient)
-                .clickable(
-                    enabled = feedAvailable,
-                    onClickLabel = "Copy feed link",
-                    role = Role.Button,
-                ) {
-                    if (onCopyFeedLink()) {
-                        copied = true
-                        resetJob[0]?.cancel()
-                        resetJob[0] = scope.launch { delay(1500); copied = false }
-                    }
+        PressTile(
+            onTap = {
+                if (onCopyFeedLink()) {
+                    copied = true
+                    resetJob[0]?.cancel()
+                    resetJob[0] = scope.launch { delay(1500); copied = false }
                 }
-                .padding(vertical = 10.dp),
-            contentAlignment = Alignment.Center,
+            },
+            enabled = feedAvailable, onClickLabel = "Copy feed link",
+            background = SageGradient, corner = 18.dp,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp),
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.alpha(if (feedAvailable) 1f else 0.55f),
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 10.dp)) {
                 Text(
                     if (copied) "\u2713 Copied" else "Copy feed link",
                     color = OnSage, fontSize = 15.sp, fontWeight = FontWeight.Bold,
@@ -174,41 +155,66 @@ fun SettingsScreen(
         }
         Spacer(Modifier.height(14.dp))
 
-        SettingsSection("Feed list") {
+        SettingsSection("Accent") {
+            val view = LocalView.current
+            // Choices are saved as colours, so the order here is free to change.
+            Swatches.chunked(4).forEach { row ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    row.forEach { col ->
+                        val on = UiPrefs.accent == col
+                        Box(
+                            Modifier.size(48.dp).clip(CircleShape)
+                                .semantics { contentDescription = "Accent color"; selected = on }
+                                .clickable(role = Role.RadioButton) { tapHaptic(view); UiPrefs.setAccent(col) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                Modifier.size(42.dp).clip(CircleShape).background(col)
+                                    .let { if (on) it.border(3.dp, TextC, CircleShape) else it },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+
+        SettingsSection("Feel") {
+            val view = LocalView.current
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
-                    .toggleable(value = statusCentered, role = Role.Switch, onValueChange = onStatusCentered),
+                Modifier.fillMaxWidth().heightIn(min = 32.dp)
+                    .toggleable(value = UiPrefs.haptics, role = Role.Switch, onValueChange = { next ->
+                        // Ticks once when turned on, stays silent when turned off.
+                        tapHaptic(view, next)
+                        UiPrefs.setHaptics(next)
+                    })
+                    .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text("Center status labels", color = TextC, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text(if (statusCentered) "Centered in the status column" else "Right-aligned (default)", color = Muted, fontSize = 12.sp)
-                }
-                androidx.compose.material3.Switch(
-                    checked = statusCentered, onCheckedChange = null,
-                    colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Sage, checkedThumbColor = Color.White),
-                )
+                Text("Vibrate on press", color = TextC, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                SettingToggle(UiPrefs.haptics)
             }
         }
         Spacer(Modifier.height(14.dp))
 
         SettingsSection("Feedback & bugs") {
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClickLabel = "Send feedback", role = Role.Button) { onFeedback() },
-                verticalAlignment = Alignment.CenterVertically,
+            PressTile(
+                onTap = onFeedback, onClickLabel = "Send feedback",
+                background = ClearBrush, corner = 8.dp, lift = false,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
-                Text(
-                    "Send feedback, report a bug, or suggest a feature",
-                    color = TextC, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                    lineHeight = 20.sp, modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                Icon(
-                    ChevronRightIcon,
-                    contentDescription = null, tint = Muted, modifier = Modifier.size(24.dp),
-                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Send feedback, report a bug, or suggest a feature",
+                        color = TextC, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        lineHeight = 20.sp, modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        ChevronRightIcon,
+                        contentDescription = null, tint = Muted, modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -226,10 +232,11 @@ fun SettingsScreen(
             LaunchedEffect(resultSeq) {
                 if (result == "You're up to date.") { delay(5000); result = "" }
             }
-            Box(
-                Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp))
-                    .background(SageGradient)
-                    .clickable(enabled = !checking, onClickLabel = "Check for updates", role = Role.Button) {
+            PressTile(
+                enabled = !checking, onClickLabel = "Check for updates",
+                background = SageGradient, corner = 14.dp,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                onTap = {
                         checking = true
                         result = ""
                         scope.launch {
@@ -253,9 +260,7 @@ fun SettingsScreen(
                                 Updater.CheckOutcome.Unavailable -> result = "Couldn't check right now. Try again later."
                             }
                         }
-                    }
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center,
+                },
             ) {
                 Text(
                     if (checking) "Checking..." else "Check for updates",
@@ -273,7 +278,7 @@ fun SettingsScreen(
                 }
             }
         }
-        Spacer(Modifier.height(28.dp))
+        // Bottom gap = the screen's own 16.dp padding, same as the sides (as in BingeMote).
     }
 }
 
