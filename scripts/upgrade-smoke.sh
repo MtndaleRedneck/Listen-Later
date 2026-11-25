@@ -88,6 +88,7 @@ run_one() {
   adb install "$OLD_APK" || { echo "UPGRADE SMOKE FAIL: $OLD_TAG install failed"; return 1; }
   OLD_VC=$(vcode)
   echo "installed baseline $OLD_TAG versionCode=$OLD_VC"
+  case "$OLD_VC" in ''|*[!0-9]*) echo "UPGRADE SMOKE SETUP FAIL ($OLD_TAG): could not read a numeric old versionCode (got '$OLD_VC'), so no upgrade verdict is possible"; return 1;; esac
 
   # Grant up front: MainActivity asks for POST_NOTIFICATIONS on its first-ever launch, and a
   # system permission dialog would cover the sign-in screen. A real upgrading user granted it
@@ -124,7 +125,8 @@ run_one() {
   adb install -r "$NEW_APK" || { echo "UPGRADE SMOKE FAIL: in-place upgrade from $OLD_TAG refused (signature or version problem)"; return 1; }
   NEW_VC=$(vcode)
   echo "versionCode old=$OLD_VC new=$NEW_VC"
-  [ "${NEW_VC:-0}" -gt "${OLD_VC:-0}" ] || { echo "UPGRADE SMOKE FAIL: versionCode did not increase ($OLD_VC -> $NEW_VC)"; return 1; }
+  case "$NEW_VC" in ''|*[!0-9]*) echo "UPGRADE SMOKE FAIL ($OLD_TAG): could not read a numeric new versionCode after the upgrade (got '$NEW_VC')"; return 1;; esac
+  [ "$NEW_VC" -gt "$OLD_VC" ] || { echo "UPGRADE SMOKE FAIL: versionCode did not increase ($OLD_VC -> $NEW_VC)"; return 1; }
 
   adb logcat -c
   adb shell am start -n $PKG/.MainActivity 2>&1 | tee /tmp/usmoke-relaunch.log
