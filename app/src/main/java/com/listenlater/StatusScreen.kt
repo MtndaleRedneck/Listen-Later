@@ -146,7 +146,9 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
             // Threshold scales with the system font scale: at 1.3x the normal pill needs
             // roughly 125-130dp, so the compact pill must take over proportionally earlier
             // instead of clipping the word at the old fixed cutoff.
-            val compact = maxWidth < 112.dp * LocalConfiguration.current.fontScale
+            val availWidth = maxWidth
+            val fontScale = LocalConfiguration.current.fontScale
+            val compact = availWidth < 112.dp * fontScale
             Surface(color = NavBg, shape = RoundedCornerShape(50), modifier = Modifier.widthIn(max = maxWidth)) {
                 Row(
                     Modifier.padding(horizontal = if (compact) 10.dp else 14.dp, vertical = if (compact) 6.dp else 8.dp),
@@ -157,13 +159,13 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
                     if (connected) {
                         Text("Connected", fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = TextC, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
                     } else {
-                        // "Disconnected" is long: shrink the text until it fits the free header space (down to 9sp)
+                        // "Disconnected" is long: shrink the text until it fits the free header space (down to 10sp)
                         // instead of clipping it, at any phone width or font scale.
-                        var discSize by remember(maxWidth) { mutableStateOf(if (compact) 12f else 13f) }
+                        var discSize by remember(availWidth, fontScale) { mutableStateOf(if (compact) 12f else 13f) }
                         Text(
                             "Disconnected", fontSize = discSize.sp, fontWeight = FontWeight.SemiBold, color = TextC,
                             maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
-                            onTextLayout = { if (it.didOverflowWidth && discSize > 9f) discSize -= 0.5f },
+                            onTextLayout = { if (it.didOverflowWidth && discSize > 10f) discSize -= 0.5f },
                         )
                     }
                 }
@@ -189,7 +191,7 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
 private fun StatusColumn(centered: Boolean, content: @Composable () -> Unit) {
     // One fixed column width shared by every row (so centered mode lines up), growing with the font scale.
     val fs = androidx.compose.ui.platform.LocalConfiguration.current.fontScale
-    Box(Modifier.width((128f * maxOf(1f, fs)).dp), contentAlignment = if (centered) Alignment.Center else Alignment.CenterEnd) { content() }
+    Box(Modifier.width((128f * fs.coerceIn(1f, 1.2f)).dp), contentAlignment = if (centered) Alignment.Center else Alignment.CenterEnd) { content() }
 }
 
 /** Tonal pill (12% fill, 38% border) in a real 48dp touch target. */

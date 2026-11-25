@@ -24,15 +24,24 @@ shot() {
 }
 # tap_text <visible text or content-desc>: find its bounds in the UI dump and tap its center.
 tap_text() {
+  TAP_OK=0
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   adb shell cat /sdcard/ui.xml | grep -o "text=\"$1\"[^>]*bounds=\"\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]\"" | head -1 > /tmp/hit.txt
   if [ ! -s /tmp/hit.txt ]; then
     adb shell cat /sdcard/ui.xml | grep -o "content-desc=\"$1\"[^>]*bounds=\"\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]\"" | head -1 > /tmp/hit.txt
   fi
   B=$(grep -o "\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]" /tmp/hit.txt | head -1)
+  if [ -z "$B" ]; then echo "TAP-MISS: no element named '$1' - nothing tapped"; return 1; fi
   X1=$(echo $B | cut -d'[' -f2 | cut -d',' -f1); Y1=$(echo $B | cut -d'[' -f2 | cut -d',' -f2 | cut -d']' -f1)
   X2=$(echo $B | cut -d'[' -f3 | cut -d',' -f1); Y2=$(echo $B | cut -d'[' -f3 | cut -d',' -f2 | cut -d']' -f1)
+  if [ "$X2" -le "$X1" ] || [ "$Y2" -le "$Y1" ]; then echo "TAP-MISS: empty bounds for '$1' - nothing tapped"; return 1; fi
   adb shell input tap $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 ))
+  TAP_OK=1
+}
+# swipe_up: scroll the list using the real screen size (never a fixed coordinate).
+swipe_up() {
+  read SW SH <<< "$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1 | tr x ' ')"
+  adb shell input swipe $((SW/2)) $((SH*70/100)) $((SW/2)) $((SH*25/100))
 }
 # First launch warms up and seeds; captured, then discarded.
 shot warmup --ez demo true
@@ -122,6 +131,17 @@ adb shell wm size 1080x2280
 adb shell wm density 440
 adb shell settings put system font_scale 1.3
 shot v19-responsive-centered --ez demo true --ez centered true --ez queuestates true
+shot v19-responsive-episodes-centered --ez demo true --ez centered true
+swipe_up; sleep 1
+adb exec-out screencap -p > $OUT/v19-responsive-episodes-centered.png
+shot v19-responsive-disconnected --ez demo true --ez loadfail true
+# 360dp wide (1080 px at 480 dpi) with font 1.3: the narrowest common phone.
+adb shell wm size 1080x2280
+adb shell wm density 480
+shot v19-360dp-disconnected --ez demo true --ez loadfail true
+shot v19-360dp-episodes-centered --ez demo true --ez centered true
+swipe_up; sleep 1
+adb exec-out screencap -p > $OUT/v19-360dp-episodes-centered.png
 adb shell settings put system font_scale 1.0
 adb shell wm size reset
 adb shell wm density reset
@@ -133,26 +153,27 @@ adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5
 tap_text "Settings"; sleep 2
 has_utd() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -q "You're up to date."; }
-tap_text "Check for updates"
+tap_text "Check for updates" || echo "TIMER-MEASURE: INCONCLUSIVE, check button not found"
 CX=$(( (X1+X2)/2 )); CY=$(( (Y1+Y2)/2 ))
 T1=""
+if [ "$TAP_OK" != 1 ]; then CY=0; fi
 for i in $(seq 1 20); do if has_utd; then T1=$(date +%s); break; fi; done
-if [ -z "$T1" ]; then echo "TIMER-MEASURE: no up-to-date line seen after the first check"; else
+if [ "$TAP_OK" != 1 ]; then :; elif [ -z "$T1" ]; then echo "TIMER-MEASURE: no up-to-date line seen after the first check"; else
   adb shell input tap $CX $CY
   echo "TIMER-MEASURE: first result seen at age 0 (+-2s); second check tapped at age $(( $(date +%s) - T1 ))s"
   for i in $(seq 1 6); do
     if has_utd; then V=visible; else V=gone; fi
-    echo "TIMER-MEASURE: age $(( $(date +%s) - T1 ))s after first-seen: $V"
+    echo "TIMER-MEASURE: age $(( $(date +%s) - T1 ))s after first-seen: $V (gone can mean the 2nd tap cleared it while re-checking, not expiry; final-gone age is the number to read)"
   done
 fi
 # Centered and right-aligned feed rows with every episode status (scrolled to the bottom).
 adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez centered true; sleep 6
-adb shell input swipe 720 2000 720 700; sleep 1
+swipe_up; sleep 1
 adb exec-out screencap -p > $OUT/v19-episodes-centered.png
 adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 6
-adb shell input swipe 720 2000 720 700; sleep 1
+swipe_up; sleep 1
 adb exec-out screencap -p > $OUT/v19-episodes-right.png
 ls -la $OUT
 adb shell wm size reset
