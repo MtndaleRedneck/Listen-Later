@@ -226,6 +226,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     var statusCentered by remember { mutableStateOf(store.statusCentered) }
     var subScreen by rememberSaveable { mutableStateOf("") } // "", "settings" or "feedback"
     var retryingId by remember { mutableStateOf<String?>(null) }
+    var gettingId by remember { mutableStateOf<String?>(null) }
     var pendingApk by remember { mutableStateOf<File?>(null) }
     var signOutAsk by remember { mutableStateOf(false) }
     var queued by remember { mutableStateOf(listOf<QueueStore.Queued>()) }
@@ -573,7 +574,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 StatusColumn(statusCentered) {
                                 Column(horizontalAlignment = if (statusCentered) Alignment.CenterHorizontally else Alignment.End) {
                                     Text("Couldn't get it", fontSize = 13.sp, color = Muted)
-                                    Text("Try again", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold,
+                                    Text("Try again", fontSize = 13.sp, color = SageText, fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.clickable {
                                             queueStore.removeSkipped(sk.url)
                                             queueStore.enqueueShare(sk.url, sk.title)
@@ -597,7 +598,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                 StatusColumn(statusCentered) {
                                 when {
                                     ep.status == "COMPLETED" ->
-                                        Text("In feed", fontSize = 13.sp, color = Sage, fontWeight = FontWeight.SemiBold)
+                                        Text("In feed", fontSize = 13.sp, color = SageText, fontWeight = FontWeight.SemiBold)
                                     ep.status == "FAILED" ->
                                         StatusPill(
                                             if (retryingId == ep.id) "Retrying..." else "Retry", Red, RedText,
@@ -623,18 +624,22 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                                     ep.status == "PENDING" || ep.status == "DOWNLOADING" ->
                                         Text("Downloading", fontSize = 13.sp, color = Muted)
                                     else -> // READY: cleaned up on the server, not in the feed
-                                        StatusPill("Get again", Yellow,
-                                            modifier = Modifier.clickable {
+                                        StatusPill(if (gettingId == ep.id) "Getting..." else "Get again", Yellow,
+                                            modifier = Modifier.clickable(enabled = gettingId == null) {
                                                 val server = store.server ?: return@clickable
                                                 val token = store.token ?: return@clickable
                                                 val api = Api(server, token)
+                                                gettingId = ep.id
                                                 scope.launch {
                                                     try {
                                                         withContext(Dispatchers.IO) { api.download(ep.id) }
+                                                        gettingId = null
                                                         load()
                                                     } catch (e: Api.SessionExpired) {
+                                                        gettingId = null
                                                         onSessionExpired()
                                                     } catch (e: Exception) {
+                                                        gettingId = null
                                                         Notifier.toast(context, "Couldn't start it. Try again.")
                                                     }
                                                 }
