@@ -62,8 +62,8 @@ object UiPrefs {
     fun resolve(argb: Int?): Color =
         Swatches.firstOrNull { argb != null && it.toArgb() == argb } ?: Color(SAGE_ARGB)
 
-    fun setAccent(c: Color) { accent = c; prefs?.edit()?.putInt("accent", c.toArgb())?.apply() }
-    fun setHaptics(on: Boolean) { haptics = on; prefs?.edit()?.putBoolean("haptics", on)?.apply() }
+    fun chooseAccent(c: Color) { accent = c; prefs?.edit()?.putInt("accent", c.toArgb())?.apply() }
+    fun chooseHaptics(on: Boolean) { haptics = on; prefs?.edit()?.putBoolean("haptics", on)?.apply() }
 }
 
 /** Approved redesign surfaces: subtle vertical ombré on cards and filled tiles. */

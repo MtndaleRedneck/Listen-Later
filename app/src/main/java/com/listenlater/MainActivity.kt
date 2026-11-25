@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         UiPrefs.init(this)
         // CI screenshots (debug builds only): pick an accent swatch by position.
-        if (BuildConfig.DEBUG) intent.getIntExtra("accent", -1).let { if (it in Swatches.indices) UiPrefs.setAccent(Swatches[it]) }
+        if (BuildConfig.DEBUG) intent.getIntExtra("accent", -1).let { if (it in Swatches.indices) UiPrefs.chooseAccent(Swatches[it]) }
 
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED

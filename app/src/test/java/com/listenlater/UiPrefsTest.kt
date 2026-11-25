@@ -32,7 +32,7 @@ class UiPrefsTest {
     @Test fun choicesSurviveRestart() {
         val c = fresh()
         UiPrefs.init(c)
-        UiPrefs.setAccent(Swatches[6]); UiPrefs.setHaptics(false)
+        UiPrefs.chooseAccent(Swatches[6]); UiPrefs.chooseHaptics(false)
         UiPrefs.resetForTest(); UiPrefs.init(c)
         assertEquals(Swatches[6].toArgb(), UiPrefs.accent.toArgb())
         assertFalse(UiPrefs.haptics)
@@ -57,7 +57,7 @@ class UiPrefsTest {
         val v = CountingView(c)
         tapHaptic(v)
         assertEquals(1, v.ticks)
-        UiPrefs.setHaptics(false)
+        UiPrefs.chooseHaptics(false)
         tapHaptic(v)
         assertEquals(1, v.ticks)
         tapHaptic(v, true) // an explicit "on" (turning the switch on) still ticks

@@ -165,7 +165,7 @@ fun SettingsScreen(
                         Box(
                             Modifier.size(48.dp).clip(CircleShape)
                                 .semantics { contentDescription = "Accent color"; selected = on }
-                                .clickable(role = Role.RadioButton) { tapHaptic(view); UiPrefs.setAccent(col) },
+                                .clickable(role = Role.RadioButton) { tapHaptic(view); UiPrefs.chooseAccent(col) },
                             contentAlignment = Alignment.Center,
                         ) {
                             Box(
@@ -186,7 +186,7 @@ fun SettingsScreen(
                     .toggleable(value = UiPrefs.haptics, role = Role.Switch, onValueChange = { next ->
                         // Ticks once when turned on, stays silent when turned off.
                         tapHaptic(view, next)
-                        UiPrefs.setHaptics(next)
+                        UiPrefs.chooseHaptics(next)
                     })
                     .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
