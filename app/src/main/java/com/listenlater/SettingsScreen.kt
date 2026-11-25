@@ -206,7 +206,7 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.width(8.dp))
                 Icon(
-                    androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    ChevronRightIcon,
                     contentDescription = null, tint = Muted, modifier = Modifier.size(24.dp),
                 )
             }
@@ -293,3 +293,15 @@ fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) 
         content()
     }
 }
+
+/** Material "keyboard_arrow_right" chevron, same shape BingeMote shows (not in material-icons-core). */
+private val ChevronRightIcon: androidx.compose.ui.graphics.vector.ImageVector = androidx.compose.ui.graphics.vector.ImageVector.Builder(
+    name = "ChevronRight",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+).addPath(
+    pathData = androidx.compose.ui.graphics.vector.PathParser().parsePathString("M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z").toNodes(),
+    fill = androidx.compose.ui.graphics.SolidColor(Color.White),
+).build()
