@@ -64,8 +64,14 @@ if grep -qi "error" /tmp/smoke-relaunch.log; then echo "KILL PERSISTENCE FAIL: r
 sleep 6
 adb shell am start -n com.listenlater/.SessionProbeActivity --es run_id "$SMOKE_ID" 2>&1 | tee /tmp/smoke-probe.log
 if grep -qiE "error|denial|exception" /tmp/smoke-probe.log; then echo "KILL PERSISTENCE FAIL: probe launch error"; exit 1; fi
-sleep 2
-PROBE=$(adb shell run-as com.listenlater cat files/session_probe.txt 2>/dev/null || true)
+# Wait for the probe file (bound to this run id, below) for up to 20s instead of one fixed 2s read:
+# a slow emulator can take longer to start the probe activity.
+PROBE=""
+for _ in $(seq 1 20); do
+  sleep 1
+  PROBE=$(adb shell run-as com.listenlater cat files/session_probe.txt 2>/dev/null || true)
+  case "$PROBE" in "$SMOKE_ID"*) break;; esac
+done
 # The run-id prefix binds the answer to THIS run: a leftover file (removal or
 # fresh write failed silently) carries an old id and fails here.
 if [ "$PROBE" != "$SMOKE_ID TOKEN_ABSENT SERVER_ABSENT" ]; then

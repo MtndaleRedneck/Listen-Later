@@ -74,9 +74,25 @@ for scale in 1.0 1.3; do
   adb shell settings put system font_scale $scale
   adb shell am force-stop com.listenlater; sleep 1
   adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez postnotice true
-  sleep 7
-  adb shell dumpsys notification --noredact | grep -c "pkg=com.listenlater" | tee /tmp/ncount
-  [ "$(cat /tmp/ncount)" -ge 1 ] || { echo "NO LISTENLATER NOTIFICATION POSTED"; exit 1; }
+  # Wait for the real condition (the app's notification is posted) for up to 40s instead of a fixed
+  # 7s: the post happens after the app's startup gate, which is slow on a cold CI emulator.
+  echo 0 > /tmp/ncount
+  for _ in $(seq 1 20); do
+    sleep 2
+    adb shell dumpsys notification --noredact | grep -c "pkg=com.listenlater" > /tmp/ncount
+    [ "$(cat /tmp/ncount)" -ge 1 ] && break
+  done
+  cat /tmp/ncount
+  if [ "$(cat /tmp/ncount)" -lt 1 ]; then
+    echo "NO LISTENLATER NOTIFICATION POSTED"
+    # Forensics for the failed wait: permission, notification manager state, process, app log.
+    adb shell dumpsys package com.listenlater | grep -i "POST_NOTIFICATIONS"
+    adb shell cmd notification list 2>&1 | head -20
+    adb shell dumpsys notification --noredact | grep -iE "listenlater|channel" | head -40
+    adb shell pidof com.listenlater; adb shell dumpsys activity activities | grep -iE "mResumedActivity|topResumed" | head -3
+    adb logcat -d -t 400 | grep -iE "listenlater|AndroidRuntime|FATAL|ANR" | tail -80
+    exit 1
+  fi
   adb shell input keyevent KEYCODE_HOME; sleep 2
   adb exec-out screencap -p > $OUT/notif-statusbar-$scale.png
   adb shell cmd statusbar expand-notifications; sleep 3
