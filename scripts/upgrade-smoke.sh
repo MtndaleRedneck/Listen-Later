@@ -147,6 +147,21 @@ run_one() {
   fi
   adb shell am force-stop $PKG
 
+  # NON-PUBLISH PROOF (UPGRADE_PROOF=1, set only on a non-main dispatch where the APK carries the
+  # throwaway CI key): everything above (install of the published APK, queued share, ANR handling,
+  # BEFORE proof) has run for real. install -r over a published release MUST be refused here for a
+  # signature mismatch; that refusal is the only expected outcome. It proves the harness and that
+  # signature enforcement is live. It is NOT an upgrade, signer-continuity or queue-survival verdict.
+  if [ "${UPGRADE_PROOF:-}" = 1 ]; then
+    adb install -r "$NEW_APK" > /tmp/usmoke-proof-install.log 2>&1 && {
+      echo "UPGRADE PROOF FAIL ($OLD_TAG): install -r over the published release SUCCEEDED with a throwaway-signed APK; signature enforcement is not what we assumed"; return 1; }
+    cat /tmp/usmoke-proof-install.log
+    grep -q "INSTALL_FAILED_UPDATE_INCOMPATIBLE\|signatures do not match" /tmp/usmoke-proof-install.log || {
+      echo "UPGRADE PROOF FAIL ($OLD_TAG): install -r was refused for a reason other than a signature mismatch"; return 1; }
+    echo "UPGRADE PROOF OK ($OLD_TAG vc$OLD_VC): BEFORE proof confirmed, install -r refused for signature mismatch as expected. NO upgrade/queue-survival verdict."
+    return 0
+  fi
+
   # In-place upgrade to the new minified build: signature continuity proven here.
   adb install -r "$NEW_APK" || { echo "UPGRADE SMOKE FAIL: in-place upgrade from $OLD_TAG refused (signature or version problem)"; return 1; }
   NEW_VC=$(vcode)

@@ -10,6 +10,10 @@ on:
         description: Publish the GitHub release (only after review sign-off)
         type: boolean
         default: false
+      upgrade_proof:
+        description: Non-publish harness proof of upgrade-smoke on a non-main ref (no upgrade verdict)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -219,7 +223,7 @@ jobs:
   # carry the throwaway CI key and install -r would refuse the downgrade.
   upgrade-smoke:
     needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && ((inputs.publish && github.ref == 'refs/heads/main') || (inputs.upgrade_proof && github.ref != 'refs/heads/main'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -243,6 +247,8 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: ./scripts/upgrade-smoke.sh
+        env:
+          UPGRADE_PROOF: ${{ (inputs.upgrade_proof && github.ref != 'refs/heads/main') && '1' || '' }}
       # Test-only evidence: emulator PNGs and text from the upgrade check (before/after the upgrade),
       # kept 1 day because run artifacts of a public repo are public. No APK or installer is ever uploaded here.
       - uses: actions/upload-artifact@v4
