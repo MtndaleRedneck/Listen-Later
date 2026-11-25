@@ -57,6 +57,9 @@ class MainActivity : ComponentActivity() {
                     // CI screenshot of the startup background: hold the gate a moment.
                     if (BuildConfig.DEBUG && intent.getBooleanExtra("holdgate", false)) delay(2500)
                     store = CredStore(this@MainActivity)
+                    if (BuildConfig.DEBUG && intent.getBooleanExtra("demo", false)) {
+                        store!!.statusCentered = intent.getBooleanExtra("centered", false)
+                    }
                     if (BuildConfig.DEBUG && intent.getBooleanExtra("needslogin", false)) {
                         store!!.needsLogin = true
                     }

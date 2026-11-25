@@ -100,6 +100,31 @@ adb shell wm density reset
 # (The in-place drop mid-session is the same code path; captcha needs a live server and
 # cannot be exercised on the emulator.)
 shot v17-auth-expired-signin --ez demo true --ez needslogin true
+
+# v19: centered status labels, server pill, up-to-date line clearing after 5 seconds.
+adb shell wm size 1440x2807
+adb shell wm density 649
+shot v19-status-centered --ez demo true --ez centered true --ez queuestates true
+shot v19-status-right --ez demo true --ez queuestates true
+shot v19-disconnected --ez demo true --ez loadfail true
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez centered true; sleep 5
+tap_text "Settings"; sleep 2
+adb exec-out screencap -p > $OUT/v19-settings-centered.png
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true --es updateResult "You're up to date."; sleep 5
+tap_text "Settings"; sleep 1
+adb exec-out screencap -p > $OUT/v19-uptodate-at1s.png
+sleep 7
+adb exec-out screencap -p > $OUT/v19-uptodate-at8s.png
+# Narrow width and large font with the centered switch on.
+adb shell wm size 1080x2280
+adb shell wm density 440
+adb shell settings put system font_scale 1.3
+shot v19-responsive-centered --ez demo true --ez centered true --ez queuestates true
+adb shell settings put system font_scale 1.0
+adb shell wm size reset
+adb shell wm density reset
 ls -la $OUT
 adb shell wm size reset
 adb shell wm density reset

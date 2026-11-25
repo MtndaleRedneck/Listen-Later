@@ -214,7 +214,10 @@ fun SettingsScreen(
         // Updates: untitled section, BingeMote pattern.
         SettingsSection("") {
             var checking by remember { mutableStateOf(false) }
-            var result by remember { mutableStateOf("") }
+            // Debug builds only: CI can show the result line without a network check.
+            var result by remember {
+                mutableStateOf(if (BuildConfig.DEBUG) (context as? android.app.Activity)?.intent?.getStringExtra("updateResult") ?: "" else "")
+            }
             LaunchedEffect(result) {
                 if (result == "You're up to date.") { delay(5000); result = "" }
             }
