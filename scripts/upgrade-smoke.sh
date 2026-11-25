@@ -81,13 +81,13 @@ app_failure_evidence() {
   local CURP LCX
   CURP=$(adb shell pidof $PKG | tr -d '\r\n')
   if [ -n "$1" ] && [ "$CURP" != "$1" ]; then
-    APP_FAIL="app process changed on the OLD version ($1 -> ${CURP:-none}) - restart/crash"; return 0
+    APP_FAIL="app process changed ($1 -> ${CURP:-none}) - restart/crash"; return 0
   fi
   LCX=$(adb logcat -d)
   if echo "$LCX" | grep -q "ANR in com.listenlater" \
      || echo "$LCX" | grep -A8 "FATAL EXCEPTION" | grep -q "Process: com.listenlater" \
      || echo "$LCX" | grep "Fatal signal" | grep -q "com.listenlater"; then
-    APP_FAIL="app ANR/crash evidence in logcat on the OLD version - not dismissible"; return 0
+    APP_FAIL="app ANR/crash evidence in logcat - not dismissible"; return 0
   fi
   return 1
 }
@@ -241,10 +241,12 @@ run_one() {
        || echo "$LC" | grep "Fatal signal" | grep -q "com.listenlater"; then
       REASON="app ANR/crash evidence in logcat during the assert"; break
     fi
-    if [ "$DUMP_OK" = 1 ] && waiting_proof; then PASS=1; break; fi
+    if [ "$DUMP_OK" = 1 ] && waiting_proof reuse; then PASS=1; break; fi   # same dump as the guards above
     if [ "$DUMP_OK" = 0 ]; then
       echo "attempt $i: no successful ui dump; no verdict from this attempt"
     elif echo "$UI" | grep -q "isn't responding"; then
+      # Re-run the pid/logcat guards immediately before the tap (same rule as the before loop).
+      if app_failure_evidence "$PID"; then REASON="$APP_FAIL"; break; fi
       echo "attempt $i:"; answer_external_anr
     else
       adb shell input keyevent 4
@@ -286,6 +288,7 @@ if [ -n "$FAILED" ]; then
   exit 1
 fi
 if [ "${UPGRADE_PROOF:-}" = 1 ]; then
+  [ -z "$GITHUB_STEP_SUMMARY" ] || echo "NEGATIVE SIGNATURE PROOF ONLY - this green upgrade-smoke job is NOT an upgrade test pass (no upgrade, signer-continuity or queue-survival verdict)." >> "$GITHUB_STEP_SUMMARY"
   echo "NEGATIVE SIGNATURE PROOF ONLY ($BASELINES): harness ran, install -r refused a throwaway-signed APK. This is NOT an UPGRADE SMOKE TEST PASS; no upgrade, signer-continuity or queue-survival verdict."
 else
   echo "UPGRADE SMOKE TEST PASS ($BASELINES)"
