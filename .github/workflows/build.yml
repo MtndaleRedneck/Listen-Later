@@ -111,10 +111,18 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk ListenLater-v$V.apk
           cp app/build/outputs/apk/debug/app-debug.apk ListenLater-debug-v$V.apk
 
+      # SHA-256 manifest of the exact APKs this build produced. Later jobs of the same run re-check
+      # the downloaded APKs against it, so a substituted or altered artifact fails closed.
+      - name: Write APK SHA-256 manifest
+        run: |
+          sha256sum ListenLater-v*.apk ListenLater-debug-v*.apk | tee ListenLater-SHA256SUMS.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: ListenLater-apk
-          path: ListenLater-*.apk
+          path: |
+            ListenLater-*.apk
+            ListenLater-SHA256SUMS.txt
 
   # Releases are published only on manual dispatch, after review sign-off.
   # An existing release is never replaced; bump versionName for a new one.
@@ -137,6 +145,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ListenLater-apk
+      - name: Verify downloaded APKs against the build manifest
+        run: sha256sum -c ListenLater-SHA256SUMS.txt
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -146,9 +156,18 @@ jobs:
         run: |
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           TAG=v$VERSION
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists. Bump versionName to publish a new release."
-            exit 0
+          # Fail closed on an existing tag OR release: a tag without a release would make
+          # `gh release create` reuse the old tag (ignoring --target). No overwrite, explicit nonzero.
+          # Only a clear "Not Found" answer means absent; any other API error also stops the publish.
+          if OUT=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" 2>&1); then
+            echo "Tag $TAG already exists. Bump versionName to publish a new release; refusing."; exit 1
+          elif ! echo "$OUT" | grep -qi "not found"; then
+            echo "Could not check tag $TAG ($OUT); refusing to publish."; exit 1
+          fi
+          if OUT=$(gh release view "$TAG" 2>&1); then
+            echo "Release $TAG already exists. Bump versionName to publish a new release; refusing."; exit 1
+          elif ! echo "$OUT" | grep -qi "not found"; then
+            echo "Could not check release $TAG ($OUT); refusing to publish."; exit 1
           fi
           # Publish ONLY this version's section: release-notes.md keeps full history,
           # but old history in the public notes is a rules violation (v1.7.0 incident).
@@ -203,6 +222,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ListenLater-apk
+      - name: Verify downloaded APKs against the build manifest
+        run: sha256sum -c ListenLater-SHA256SUMS.txt
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -277,6 +298,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ListenLater-apk
+      - name: Verify downloaded APKs against the build manifest
+        run: sha256sum -c ListenLater-SHA256SUMS.txt
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
