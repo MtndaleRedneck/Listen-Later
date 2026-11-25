@@ -54,8 +54,13 @@ dump_ui() {
 # fresh dump, with the app's window focused. Text from a system window or a stale file does not count.
 waiting_proof() {
   [ "$1" = reuse ] || dump_ui || return 1   # "reuse": judge the dump already in $UI (no second dump)
-  echo "$UI" | grep -o '<node[^>]*text="[^"]*1 video is waiting[^"]*"[^>]*>' | grep -q "package=\"$PKG\"" || return 1
-  adb shell dumpsys window | grep -m1 mCurrentFocus | grep -q "$PKG" || return 1
+  echo "$UI" | grep -o '<node[^>]*text="[^"]*1 video is waiting[^"]*"[^>]*>' | grep -qF "package=\"$PKG\"" || return 1
+  # A system "isn't responding" window in the same dump is not the app's screen.
+  case "$UI" in *'android:id/aerr_wait'*) return 1;; esac   # case, not a pipe: no SIGPIPE/pipefail dependence
+  # dumpsys window prints mCurrentFocus more than once and a system overlay window
+  # (ImmersiveModeConfirmation) can be the FIRST line while the app is the focused app window on a later
+  # line (real run 45560246803), so any mCurrentFocus line naming the app counts, not only the first.
+  adb shell dumpsys window | grep mCurrentFocus | grep -qF "u0 $PKG/" || return 1   # exact package, not a substring or .debug
   return 0
 }
 
@@ -167,6 +172,18 @@ run_one() {
     if [ "$DUMP_OK" = 1 ] && echo "$UI" | grep -q "isn't responding"; then
       if app_failure_evidence "$BPID"; then BEFORE_REASON="$APP_FAIL"; break; fi
       echo "before-attempt $i:"; answer_external_anr
+      # The dialog can come back within the next 4s sleep (real run: every dump during the loop was the dialog,
+      # the first dump right after Wait + relaunch was the app with the waiting copy). Judge that first frame
+      # now, with the same guards (pid/logcat evidence and the app's own dialog title), instead of only after another sleep.
+      adb shell am start -n $PKG/.MainActivity >/dev/null 2>&1
+      if app_failure_evidence "$BPID"; then BEFORE_REASON="$APP_FAIL"; break; fi
+      if dump_ui; then
+        if echo "$UI" | grep -q "Listen Later isn't responding\|Listen Later keeps stopping"; then
+          BEFORE_REASON="the APP's own ANR/crash dialog on the OLD version - not dismissible"; break
+        fi
+        if waiting_proof reuse; then BEFORE=1; break; fi
+      fi
+      continue
     fi
     adb shell am start -n $PKG/.MainActivity >/dev/null 2>&1
   done
