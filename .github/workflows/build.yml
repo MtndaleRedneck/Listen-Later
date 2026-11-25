@@ -197,6 +197,17 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: ./scripts/upgrade-smoke.sh
+      # Test-only evidence: emulator PNGs and text from the upgrade check (before/after the upgrade),
+      # kept 1 day because run artifacts of a public repo are public. No APK or installer is ever uploaded here.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgrade-smoke-evidence-${{ github.run_id }}
+          path: |
+            usmoke-evidence/*.png
+            usmoke-evidence/*.txt
+          retention-days: 1
+          if-no-files-found: ignore
 
   # The migration-gate instrumented test runs on a real emulator: the approved
   # mid-migration carryover proof must actually run and pass, not just compile.

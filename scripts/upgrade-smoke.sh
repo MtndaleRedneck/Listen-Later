@@ -25,6 +25,15 @@ BASELINES="$LATEST_TAG"
 [ "$LATEST_TAG" = v1.6.4 ] || BASELINES="$LATEST_TAG v1.6.4"
 echo "upgrade-smoke baselines: $BASELINES"
 
+EVID=usmoke-evidence
+mkdir -p "$EVID"
+# Test-only evidence for the run's one-day private-ish artifact: PNG screenshots and text. Never an APK.
+shot() { # name
+  adb exec-out screencap -p > "$EVID/$1.png" 2>/dev/null
+  adb shell uiautomator dump /sdcard/ui-$1.xml >/dev/null 2>&1
+  adb shell cat /sdcard/ui-$1.xml 2>/dev/null > "$EVID/$1-ui.txt"
+}
+
 vcode() { adb shell dumpsys package $PKG | grep -m1 -o 'versionCode=[0-9]*' | cut -d= -f2; }
 
 # Print what is on screen: which packages own windows and the texts, so a launcher ANR
@@ -84,6 +93,7 @@ run_one() {
     if echo "$UI" | grep -q "1 video is waiting"; then BEFORE=1; break; fi
   done
   echo "BEFORE upgrade ($OLD_TAG vc$OLD_VC): waiting copy shown on the old version = $BEFORE"
+  shot "before-$OLD_TAG-vc$OLD_VC"
   if [ "$BEFORE" != 1 ]; then
     # Not fatal: an older release may word or render its queue differently. It is recorded so the
     # after-upgrade result is read against what the old version actually showed.
@@ -148,6 +158,8 @@ run_one() {
     adb shell am start -n $PKG/.MainActivity >/dev/null 2>&1
     sleep 8
   done
+  shot "after-$OLD_TAG-vc$OLD_VC-to-vc$NEW_VC-pass$PASS"
+  adb logcat -d | tail -300 > "$EVID/after-$OLD_TAG-logcat.txt"
   if [ "$PASS" != 1 ]; then
     if [ -n "$REASON" ]; then
       echo "UPGRADE SMOKE FAIL ($OLD_TAG vc$OLD_VC -> vc$NEW_VC): app-side failure: $REASON"
