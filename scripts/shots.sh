@@ -52,6 +52,46 @@ shot v15-status --ez demo true
 cp $OUT/v15-status.png docs/main.png
 shot v15-loadfailed --ez demo true --ez loadfail true --ez empty true
 shot v15-signin --ez demo true --ez signedout true
+
+# v110: press feedback, accent picker, spacing and Feedback screen.
+shot v110-home --ez demo true --ez queuestates true
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5
+tap_text "Settings"; sleep 2
+adb exec-out screencap -p > $OUT/v110-settings-top.png
+# Press and hold the server pill: the sunk, dimmed state is captured while the finger is still down.
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+SRV=$(adb shell cat /sdcard/ui.xml | grep -o 'text="[^"]*\.[^"]*"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | grep -v 'Version\|Feed' | head -1)
+echo "SERVER-PILL-NODE: $SRV"
+B=$(echo "$SRV" | grep -o "\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]" | head -1)
+if [ -n "$B" ]; then
+  X1=$(echo $B | cut -d'[' -f2 | cut -d',' -f1); Y1=$(echo $B | cut -d'[' -f2 | cut -d',' -f2 | cut -d']' -f1)
+  X2=$(echo $B | cut -d'[' -f3 | cut -d',' -f1); Y2=$(echo $B | cut -d'[' -f3 | cut -d',' -f2 | cut -d']' -f1)
+  adb shell "input swipe $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )) $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )) 3500" &
+  sleep 1.5
+  adb exec-out screencap -p > $OUT/v110-server-pressed.png
+  wait
+else echo "REQUIRED-MISS: server pill not found"; fi
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5
+tap_text "Settings"; sleep 2
+swipe_up; sleep 1
+adb exec-out screencap -p > $OUT/v110-settings-mid.png
+# Haptics switch off (the whole row toggles), then the bottom of Settings.
+tap_text "Vibrate on press" || echo "REQUIRED-TAP-MISS: Vibrate on press"; sleep 1
+adb exec-out screencap -p > $OUT/v110-vibrate-off.png
+swipe_up; swipe_up; sleep 1
+adb exec-out screencap -p > $OUT/v110-settings-bottom.png
+shot v110-accent-indigo --ez demo true --ei accent 6 --ez queuestates true
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true --ei accent 1; sleep 5
+tap_text "Settings"; sleep 2
+adb exec-out screencap -p > $OUT/v110-settings-burnt-orange.png
+tap_text "Send feedback, report a bug, or suggest a feature"; sleep 2
+adb exec-out screencap -p > $OUT/v110-feedback.png
+adb shell input tap 500 1000; sleep 1
+adb shell input text "It looks fine"; sleep 1
+adb exec-out screencap -p > $OUT/v110-feedback-typed.png
 # Sign-out confirm dialog.
 adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 5

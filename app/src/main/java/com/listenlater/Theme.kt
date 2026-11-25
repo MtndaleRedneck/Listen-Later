@@ -48,6 +48,8 @@ object UiPrefs {
     var haptics: Boolean by mutableStateOf(true)
         private set
 
+    internal fun resetForTest() { prefs = null; accent = Color(SAGE_ARGB); haptics = true }
+
     fun init(context: android.content.Context) {
         if (prefs != null) return
         val p = context.applicationContext.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE)
