@@ -52,6 +52,19 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest || { echo "::warning::the first unit-test run failed and this green is a retry - read the first failure in the log above"; ./gradlew --no-daemon testDebugUnitTest; }
 
+      - name: Unit test counts (from the JUnit XML)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          t=f=e=sk=0
+          for p in sorted(glob.glob('app/build/test-results/testDebugUnitTest/*.xml')):
+              r=ET.parse(p).getroot(); a=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
+              print('%-70s tests=%d failures=%d errors=%d skipped=%d' % (r.get('name'), *a))
+              t+=a[0]; f+=a[1]; e+=a[2]; sk+=a[3]
+          print('UNIT TEST TOTAL: tests=%d failures=%d errors=%d skipped=%d' % (t,f,e,sk))
+          PY
+
       # The real keystore is decoded ONLY on a manual publish run from main, so
       # branch-controlled builds never see the signing secrets. Every other run
       # signs with a throwaway keystore: the release APK stays installable for

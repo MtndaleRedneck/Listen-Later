@@ -123,11 +123,15 @@ tap_text "Settings"; sleep 2
 adb exec-out screencap -p > $OUT/v19-settings-centered.png
 adb shell am force-stop com.listenlater; sleep 1
 adb shell "am start -n com.listenlater/.MainActivity --ez demo true --es updateResult \"You're up to date.\""; sleep 5
-tap_text "Settings" || echo "REQUIRED-TAP-MISS: Settings (uptodate)"; sleep 1
-swipe_up; sleep 1
-adb exec-out screencap -p > $OUT/v19-uptodate-at1s.png
-sleep 7
-adb exec-out screencap -p > $OUT/v19-uptodate-at8s.png
+tap_text "Settings" || echo "REQUIRED-TAP-MISS: Settings (uptodate)"
+UTD0=$(date +%s)   # result countdown starts when Settings opens (tap just completed, +-1s)
+utd_shot() { adb exec-out screencap -p > $OUT/$1.png; echo "UTD-TIME: $1 captured $(( $(date +%s) - UTD0 ))s after Settings tap"; }
+swipe_up
+utd_shot v19-uptodate-early
+sleep 1
+utd_shot v19-uptodate-early2
+while [ $(( $(date +%s) - UTD0 )) -lt 8 ]; do sleep 0.5; done
+utd_shot v19-uptodate-late
 # Narrow width and large font with the centered switch on.
 adb shell wm size 1080x2280
 adb shell wm density 440
