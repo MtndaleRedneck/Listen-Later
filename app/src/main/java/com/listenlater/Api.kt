@@ -1,6 +1,7 @@
 package com.listenlater
 
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,7 +19,7 @@ import java.util.concurrent.TimeUnit
 class Api(private val server: String, private val token: String?, testClient: OkHttpClient? = null) {
 
     class SessionExpired : Exception()
-    class ApiError(message: String) : Exception(message)
+    class ApiError(message: String, val code: Int = 0) : Exception(message)
 
     /** A reply that isn't a proper answer at all (an HTML page, a proxy error). */
     class UnexpectedResponse(val httpCode: Int) : java.io.IOException("Unexpected response ($httpCode)")
@@ -31,6 +32,18 @@ class Api(private val server: String, private val token: String?, testClient: Ok
         java.io.IOException("Redirect refused ($code -> ${targetOrigin ?: "no usable Location"})")
 
     data class ShareResult(val duplicate: Boolean)
+
+    /** Whether the server carries the optional full-delete add-on. UNKNOWN means we could not tell. */
+    enum class RemovalSupport { YES, NO, UNKNOWN }
+
+    /** What the server did for a full delete. */
+    enum class RemoveResult { REMOVED, UNLINKED, ALREADY_GONE }
+
+    /** The video exists but is not in the Individual Videos feed. */
+    class NotInFeed : Exception()
+
+    /** The video is downloading right now and can't be removed yet. */
+    class StillDownloading : Exception()
 
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
@@ -106,7 +119,7 @@ class Api(private val server: String, private val token: String?, testClient: Ok
             if (json.optInt("code", 0) != 200) {
                 val msg = json.optString("msg", "")
                 if (looksLikeAuthFailure(msg)) throw SessionExpired()
-                throw ApiError(msg.ifEmpty { "Request failed" })
+                throw ApiError(msg.ifEmpty { "Request failed" }, json.optInt("code", 0))
             }
             return json
         }
@@ -233,4 +246,48 @@ private fun originOf(url: HttpUrl): String {
     val default = if (url.isHttps) 443 else 80
     val port = if (url.port != default) ":${url.port}" else ""
     return "${url.scheme}://${url.host}$port"
+
+    /**
+     * Asks the server whether the full-delete add-on is installed. Only a proper JSON answer that
+     * says so counts as YES; a stock server (404, an HTML page, JSON without the flag) is NO;
+     * network trouble, timeouts and 5xx are UNKNOWN so a hiccup is never reported as "not supported".
+     */
+    fun removalSupport(): RemovalSupport = try {
+        val data = call(get("/api/episode/individual/capability")).optJSONObject("data")
+        if (data != null && data.optInt("removeIndividual", 0) == 1) RemovalSupport.YES else RemovalSupport.NO
+    } catch (e: SessionExpired) {
+        throw e
+    } catch (e: ApiError) {
+        // A stock server answers an unknown or forbidden route with a JSON error of its own.
+        if (e.code in listOf(0, 403, 404, 405)) RemovalSupport.NO else RemovalSupport.UNKNOWN
+    } catch (e: java.io.IOException) {
+        // A non-JSON reply below 500 (the site's HTML page for an unknown path) means the route
+        // isn't there; timeouts, connection errors, redirects refused and 5xx mean we can't tell.
+        if (e is UnexpectedResponse) RemovalSupport.NO else RemovalSupport.UNKNOWN
+    }
+
+    /**
+     * Full delete of one Individual Videos entry (add-on route). Throws [NotInFeed] for
+     * code 422 and [StillDownloading] for 409; anything else unexpected is an error, never a success.
+     */
+    fun removeIndividual(id: String): RemoveResult {
+        if (!Regex("[A-Za-z0-9_-]{1,64}").matches(id)) throw ApiError("Invalid video id")
+        val url = base().toHttpUrl().newBuilder()
+            .addPathSegments("api/episode/individual").addPathSegment(id).build()
+        val data = try {
+            call(authed(Request.Builder().url(url)).delete().build()).optJSONObject("data")
+        } catch (e: ApiError) {
+            when (e.code) {
+                422 -> throw NotInFeed()
+                409 -> throw StillDownloading()
+                else -> throw e
+            }
+        }
+        return when (data?.optString("result", "")) {
+            "removed" -> RemoveResult.REMOVED
+            "unlinked" -> RemoveResult.UNLINKED
+            "already_gone" -> RemoveResult.ALREADY_GONE
+            else -> throw UnexpectedResponse(200)
+        }
+    }
 }

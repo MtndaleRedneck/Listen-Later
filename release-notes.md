@@ -1,3 +1,13 @@
+## What's new in 1.12.0
+
+November 25, 2026. You can now delete a video from the list.
+
+New:
+- Press and hold a video in the list to delete it. A confirmation asks first. On a server with the optional full-delete add-on, the video is removed from your feed too. Videos still waiting to send are simply taken off the list.
+
+Improved:
+- If the server can't do a full delete, or the check fails, the app says so and leaves the list as it is.
+
 ## What's new in 1.11.0
 
 November 25, 2026. Settings now remembers where you were, and a few spacing and color details are cleaned up.

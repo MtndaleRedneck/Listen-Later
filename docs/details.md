@@ -73,6 +73,29 @@ phone model. Your server address and sign-in details are not added to the
 report.
 
 
+## Full delete (optional server add-on)
+
+Press and hold a video in the list to delete it. The app first asks the server whether it
+supports full delete. Stock PigeonPod (v1.31.0 was used) can't remove an entry: its own delete
+only removes the downloaded files and the entry stays as "Get again". On a stock server the
+app says "Full delete isn't available on this server" and changes nothing.
+
+The add-on is optional. Everything else in the app works without it.
+
+- Patch: `server/individual-video-removal.patch`. It applies to PigeonPod v1.31.0 (commit
+  b6e1a49) and adds two routes under `/api/episode/individual/`. It has no database changes.
+- To use it: apply the patch to your PigeonPod source (`git apply`), rebuild your image, and
+  restart. Back up your database and keep your previous image first so you can roll back.
+  If you already carry other patches, apply this one last. Re-apply it after PigeonPod updates.
+- What it does: removes the video from the Individual Videos feed and deletes its files, unless
+  it is downloading right now ("Still downloading. Try again shortly."). It can't be undone.
+  Sharing the link again adds it fresh. Episodes your podcast app already downloaded are not touched.
+- Status: the server tests in the patch pass in a clean checkout. The full image build and an
+  end-to-end check on a clean install are listed here once done.
+
+Videos still waiting to send, or under "Couldn't get it", are removed from the list on the
+phone only; nothing is sent to the server for them.
+
 ## If a video hasn't arrived
 
 Open Listen Later to see whether it's sending, waiting for sign-in or

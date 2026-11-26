@@ -43,6 +43,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.sync.withLock
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -220,6 +227,24 @@ private fun RowDivider() {
 
 private data class EpisodeItem(val id: String, val title: String, val status: String)
 
+/** What a long-press delete is about: a server entry, a share still waiting to send, or a parked one. */
+private sealed interface DeleteTarget {
+    val title: String
+    data class OnServer(val id: String, override val title: String) : DeleteTarget
+    data class Waiting(val url: String, override val title: String) : DeleteTarget
+    data class Parked(val url: String, override val title: String) : DeleteTarget
+}
+
+/** Long-press (with a tick) asks to delete the row; TalkBack gets a "Delete" action. */
+@Composable
+private fun Modifier.deleteOnLongPress(onDelete: () -> Unit): Modifier {
+    val view = LocalView.current
+    val action by rememberUpdatedState(onDelete)
+    return this
+        .pointerInput(Unit) { detectTapGestures(onLongPress = { tapHaptic(view); action() }) }
+        .semantics { customActions = listOf(CustomAccessibilityAction("Delete") { action(); true }) }
+}
+
 private sealed interface UpdateUi {
     data class Offer(val info: UpdateInfo) : UpdateUi
     data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateUi
@@ -243,6 +268,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     var gettingId by remember { mutableStateOf<String?>(null) }
     var pendingApk by remember { mutableStateOf<File?>(null) }
     var signOutAsk by remember { mutableStateOf(false) }
+    var deleteAsk by remember { mutableStateOf<DeleteTarget?>(null) }
+    var deletingKey by remember { mutableStateOf<String?>(null) }
+    // Whether the server has the full-delete add-on; asked on the first long-press, re-asked after any failure.
+    var removalSupport by remember(store.server) { mutableStateOf<Api.RemovalSupport?>(null) }
     var queued by remember { mutableStateOf(listOf<QueueStore.Queued>()) }
     var skipped by remember { mutableStateOf(listOf<QueueStore.Skipped>()) }
 
@@ -464,6 +493,95 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     // Settings keeps its place while Feedback is open on top of it; leaving Settings for Home resets it to the top.
     val settingsScroll = rememberScrollState()
     LaunchedEffect(subScreen) { if (subScreen == "") settingsScroll.scrollTo(0) }
+    /** Long-press on a server row: only offer the dialog when the server can really do a full delete. */
+    fun askDeleteOnServer(ep: EpisodeItem) {
+        if (deletingKey != null || Demo.active) {
+            if (Demo.active) deleteAsk = DeleteTarget.OnServer(ep.id, ep.title)
+            return
+        }
+        if (removalSupport == Api.RemovalSupport.YES) {
+            deleteAsk = DeleteTarget.OnServer(ep.id, ep.title)
+            return
+        }
+        val server = store.server ?: return
+        val token = store.token ?: return
+        scope.launch {
+            val support = try {
+                withContext(Dispatchers.IO) { Api(server, token).removalSupport() }
+            } catch (e: Api.SessionExpired) {
+                onSessionExpired(); return@launch
+            } catch (e: Exception) {
+                Api.RemovalSupport.UNKNOWN
+            }
+            removalSupport = if (support == Api.RemovalSupport.UNKNOWN) null else support
+            when (support) {
+                Api.RemovalSupport.YES -> deleteAsk = DeleteTarget.OnServer(ep.id, ep.title)
+                Api.RemovalSupport.NO -> Notifier.toast(context, "Full delete isn't available on this server.")
+                Api.RemovalSupport.UNKNOWN -> Notifier.toast(context, "Couldn't check the server. Try again.")
+            }
+        }
+    }
+
+    /** Runs the confirmed delete. A row only disappears after the server (or the local list) confirms it. */
+    fun confirmDelete(target: DeleteTarget) {
+        when (target) {
+            is DeleteTarget.OnServer -> {
+                val server = store.server ?: return
+                val token = store.token ?: return
+                deletingKey = target.id
+                scope.launch {
+                    try {
+                        val r = withContext(Dispatchers.IO) { Api(server, token).removeIndividual(target.id) }
+                        Notifier.toast(
+                            context,
+                            if (r == Api.RemoveResult.ALREADY_GONE) "That video was already gone." else "Deleted."
+                        )
+                    } catch (e: Api.SessionExpired) {
+                        deletingKey = null
+                        onSessionExpired(); return@launch
+                    } catch (e: Api.NotInFeed) {
+                        Notifier.toast(context, "That video isn't in this list.")
+                    } catch (e: Api.StillDownloading) {
+                        Notifier.toast(context, "Still downloading. Try again shortly.")
+                    } catch (e: Exception) {
+                        removalSupport = null
+                        Notifier.toast(context, "Couldn't delete. Try again.")
+                    }
+                    deletingKey = null
+                    load()
+                }
+            }
+            is DeleteTarget.Waiting -> {
+                deletingKey = target.url
+                scope.launch {
+                    // The worker holds this lock for a whole send, so wait for it: either the share is
+                    // still queued and we remove it, or it just reached the server and needs a server delete.
+                    val removed = QueueLock.mutex.withLock {
+                        val still = queueStore.shareQueue().any { it.url == target.url }
+                        if (still) {
+                            queueStore.removeFromQueue(target.url)
+                            Notifier.clearRedirectNotice(context, target.url)
+                        }
+                        still
+                    }
+                    queued = queueStore.shareQueue()
+                    deletingKey = null
+                    Notifier.toast(
+                        context,
+                        if (removed) "Removed." else "It just finished sending. Long-press it again to delete."
+                    )
+                    load()
+                }
+            }
+            is DeleteTarget.Parked -> {
+                queueStore.removeSkipped(target.url)
+                Notifier.cancelSkipped(context, target.url)
+                skipped = queueStore.skipped()
+                Notifier.toast(context, "Removed.")
+            }
+        }
+    }
+
     val hasRows = episodes.isNotEmpty() || queued.isNotEmpty() || skipped.isNotEmpty()
 
     if (subScreen == "settings") {
@@ -537,7 +655,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             val id = VideoUrl.extractVideoId(q.url)
                             val now = System.currentTimeMillis()
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                modifier = Modifier.fillMaxWidth().deleteOnLongPress { if (deletingKey == null) deleteAsk = DeleteTarget.Waiting(q.url, q.title.ifEmpty { "Video waiting to send" }) }.padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -571,7 +689,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             if (!firstRow) RowDivider()
                             firstRow = false
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                modifier = Modifier.fillMaxWidth().deleteOnLongPress { if (deletingKey == null) deleteAsk = DeleteTarget.Parked(sk.url, sk.title.ifEmpty { "Video ${VideoUrl.extractVideoId(sk.url) ?: "link"}" }) }.padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -608,7 +726,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             if (!firstRow) RowDivider()
                             firstRow = false
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                modifier = Modifier.fillMaxWidth().deleteOnLongPress { askDeleteOnServer(ep) }.padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -699,6 +817,31 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
         }
 
     }
+    }
+
+    deleteAsk?.let { t ->
+        AlertDialog(
+            onDismissRequest = { deleteAsk = null },
+            containerColor = Card2,
+            title = { Text("Delete this video?", color = TextC) },
+            text = {
+                Column {
+                    Text(t.title, color = TextC, maxLines = 3)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (t is DeleteTarget.OnServer) "Removes it from this list and your PigeonPod feed. Can't be undone."
+                        else "Removes it from this list. It won't be sent.",
+                        color = Muted
+                    )
+                }
+            },
+            confirmButton = {
+                HTextButton({ deleteAsk = null; confirmDelete(t) }) { Text("Delete", color = RedText) }
+            },
+            dismissButton = {
+                HTextButton({ deleteAsk = null }) { Text("Cancel", color = Muted) }
+            },
+        )
     }
 
     if (signOutAsk) {

@@ -12,8 +12,8 @@ android {
         minSdk = 31
         targetSdk = 34
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 18
-        versionName = "1.11.0"
+        versionCode = 19
+        versionName = "1.12.0"
     }
 
     // Release signing key is private and never committed. CI passes it in through environment

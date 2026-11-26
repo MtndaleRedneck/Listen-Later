@@ -361,4 +361,96 @@ class ApiTest {
         assertEquals("https://other.example", e.targetOrigin)
         server.shutdown()
     }
+
+    private fun api(server: MockWebServer) = Api(server.url("/").toString().trimEnd('/'), "SECRET")
+
+    private fun support(vararg replies: MockResponse): Api.RemovalSupport {
+        val server = MockWebServer()
+        replies.forEach { server.enqueue(it) }
+        server.start()
+        try { return api(server).removalSupport() } finally { server.shutdown() }
+    }
+
+    @Test
+    fun removalSupportYesOnlyWithTheFlag() {
+        assertEquals(Api.RemovalSupport.YES, support(MockResponse().setBody(ok("""{"removeIndividual":1}"""))))
+        assertEquals(Api.RemovalSupport.NO, support(MockResponse().setBody(ok("""{"removeIndividual":0}"""))))
+        assertEquals(Api.RemovalSupport.NO, support(MockResponse().setBody(ok("{}"))))
+    }
+
+    @Test
+    fun removalSupportNoOnStockServer() {
+        assertEquals(Api.RemovalSupport.NO, support(MockResponse().setResponseCode(404).setBody("<html>not found</html>")))
+        assertEquals(Api.RemovalSupport.NO,
+            support(MockResponse().setResponseCode(404).setBody("""{"status":404,"error":"Not Found"}""")))
+        assertEquals(Api.RemovalSupport.NO, support(MockResponse().setBody("<html>hello</html>")))
+    }
+
+    @Test
+    fun removalSupportUnknownOnServerTroubleOrRefusedRedirect() {
+        assertEquals(Api.RemovalSupport.UNKNOWN, support(MockResponse().setResponseCode(502).setBody("<html>bad gateway</html>")))
+        assertEquals(Api.RemovalSupport.UNKNOWN, support(MockResponse().setResponseCode(503)))
+        assertEquals(Api.RemovalSupport.UNKNOWN,
+            support(MockResponse().setResponseCode(302).addHeader("Location", "http://elsewhere.example/x")))
+        assertEquals(Api.RemovalSupport.UNKNOWN,
+            support(MockResponse().setBody("""{"code":500,"msg":"boom","data":null}""")))
+    }
+
+    @Test
+    fun removalSupportExpiredSessionStillSignsOut() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.start()
+        assertThrows(Api.SessionExpired::class.java) { api(server).removalSupport() }
+        server.shutdown()
+    }
+
+    @Test
+    fun removeIndividualReportsEachResult() {
+        val cases = mapOf(
+            "removed" to Api.RemoveResult.REMOVED,
+            "unlinked" to Api.RemoveResult.UNLINKED,
+            "already_gone" to Api.RemoveResult.ALREADY_GONE,
+        )
+        for ((wire, expected) in cases) {
+            val server = MockWebServer()
+            server.enqueue(MockResponse().setBody(ok("""{"result":"$wire"}""")))
+            server.start()
+            assertEquals(expected, api(server).removeIndividual("42"))
+            val req = server.takeRequest()
+            assertEquals("DELETE", req.method)
+            assertEquals("/api/episode/individual/42", req.path)
+            assertEquals("SECRET", req.getHeader("pigeonpod"))
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun removeIndividualTellsNotInFeedAndDownloadingApart() {
+        val s1 = MockWebServer()
+        s1.enqueue(MockResponse().setBody("""{"code":422,"msg":"not in feed","data":null}"""))
+        s1.start()
+        assertThrows(Api.NotInFeed::class.java) { api(s1).removeIndividual("42") }
+        s1.shutdown()
+        val s2 = MockWebServer()
+        s2.enqueue(MockResponse().setBody("""{"code":409,"msg":"downloading","data":null}"""))
+        s2.start()
+        assertThrows(Api.StillDownloading::class.java) { api(s2).removeIndividual("42") }
+        s2.shutdown()
+    }
+
+    @Test
+    fun removeIndividualNeverCountsSurpriseAnswersAsSuccess() {
+        val s1 = MockWebServer()
+        s1.enqueue(MockResponse().setBody(ok("""{"result":"maybe"}""")))
+        s1.start()
+        assertThrows(Api.UnexpectedResponse::class.java) { api(s1).removeIndividual("42") }
+        s1.shutdown()
+        val s2 = MockWebServer()
+        s2.enqueue(MockResponse().setResponseCode(503))
+        s2.start()
+        assertThrows(java.io.IOException::class.java) { api(s2).removeIndividual("42") }
+        s2.shutdown()
+        assertThrows(Api.ApiError::class.java) { Api("http://localhost:1", "x").removeIndividual("../x") }
+    }
 }
