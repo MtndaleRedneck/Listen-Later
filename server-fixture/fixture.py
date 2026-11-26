@@ -52,6 +52,7 @@ def db_exec(sql, params=()):
     c = sqlite3.connect(DB, timeout=10); c.execute(sql, params); c.commit(); c.close()
 
 def insert_episode(eid, channel_id, status="COMPLETED", feeds=(FEED,)):
+    sh("sudo chmod -R a+rwX fx-data")
     c = sqlite3.connect(DB, timeout=10)
     cols = c.execute("PRAGMA table_info(episode)").fetchall()
     vals = {}
@@ -72,6 +73,7 @@ def insert_episode(eid, channel_id, status="COMPLETED", feeds=(FEED,)):
     c.commit(); c.close()
 
 def exists(eid):
+    sh("sudo chmod -R a+rwX fx-data")
     c = sqlite3.connect(DB, timeout=10)
     n = c.execute("SELECT count(*) FROM episode WHERE id=?", (eid,)).fetchone()[0]
     m = c.execute("SELECT count(*) FROM playlist_episode WHERE episode_id=? AND playlist_id=?", (eid, FEED)).fetchone()[0]
