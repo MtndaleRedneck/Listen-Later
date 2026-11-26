@@ -55,7 +55,7 @@ index 96a0ded..d6b6f04 100644
 +  int deleteMapping(@Param("playlistId") String playlistId, @Param("episodeId") String episodeId);
  }
 diff --git a/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java b/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
-index ce13d6f..48c323e 100644
+index ce13d6f..7859d83 100644
 --- a/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
 +++ b/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
 @@ -23,6 +23,8 @@ import org.springframework.context.MessageSource;
@@ -145,6 +145,69 @@ index ce13d6f..48c323e 100644
    @Transactional
    public int deleteEpisodeCompletelyById(String id) {
      Episode episode = episodeMapper.selectById(id);
+@@ -499,6 +565,36 @@ public class EpisodeService {
+     return episodeMapper.deleteById(id);
+   }
+ 
++  /** Language part of a subtitle name such as "en", "pt-BR", "zh-Hans" or "en-orig". */
++  private static final java.util.regex.Pattern SUBTITLE_LANG =
++      java.util.regex.Pattern.compile("[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*");
++
++  /**
++   * True only for this episode's own subtitle: {@code <base>.vtt/.srt} or {@code <base>.<lang>.vtt/.srt}.
++   * A different video whose name merely starts with {@code <base>.} (for example "Title.Remix") is not matched.
++   */
++  static boolean isSubtitleSidecar(String name, String baseName) {
++    if (!(name.endsWith(".vtt") || name.endsWith(".srt"))) {
++      return false;
++    }
++    String stem = name.substring(0, name.length() - 4);
++    if (stem.equals(baseName)) {
++      return true;
++    }
++    return stem.startsWith(baseName + ".")
++        && SUBTITLE_LANG.matcher(stem.substring(baseName.length() + 1)).matches();
++  }
++
++  /** True only for this episode's own thumbnail: {@code <base>.jpg/.jpeg/.png/.webp}. */
++  static boolean isThumbnailSidecar(String name, String baseName) {
++    for (String ext : new String[] {".jpg", ".jpeg", ".png", ".webp"}) {
++      if (name.equals(baseName + ext)) {
++        return true;
++      }
++    }
++    return false;
++  }
++
+   void deleteSubtitleFiles(String mediaFilePath) {
+     if (isS3Mode()) {
+       return;
+@@ -526,10 +622,8 @@ public class EpisodeService {
+         List<Path> subtitleFiles = pathStream
+             .filter(path -> {
+               String name = path.getFileName().toString();
+-              boolean subtitleExt = name.endsWith(".vtt") || name.endsWith(".srt");
+-              boolean samePrefix = name.startsWith(baseName + ".");
+               boolean isMediaFile = name.equals(fileName);
+-              return subtitleExt && samePrefix && !isMediaFile;
++              return isSubtitleSidecar(name, baseName) && !isMediaFile;
+             }).toList();
+ 
+         for (Path subtitlePath : subtitleFiles) {
+@@ -587,12 +681,8 @@ public class EpisodeService {
+         List<Path> thumbnailFiles = pathStream
+             .filter(path -> {
+               String name = path.getFileName().toString();
+-              boolean imageExt =
+-                  name.endsWith(".jpg") || name.endsWith(".jpeg")
+-                      || name.endsWith(".png") || name.endsWith(".webp");
+-              boolean samePrefix = name.startsWith(baseName + ".");
+               boolean isMediaFile = name.equals(fileName);
+-              return imageExt && samePrefix && !isMediaFile;
++              return isThumbnailSidecar(name, baseName) && !isMediaFile;
+             }).toList();
+ 
+         for (Path thumbnailPath : thumbnailFiles) {
 diff --git a/backend/src/test/java/top/asimov/pigeon/controller/EpisodeControllerIndividualAuthTest.java b/backend/src/test/java/top/asimov/pigeon/controller/EpisodeControllerIndividualAuthTest.java
 new file mode 100644
 index 0000000..3554ea0
@@ -637,6 +700,120 @@ index 0000000..cb3df5c
 +    verify(playlistEpisodeMapper).deleteMapping(FEED, "a");
 +    assertFalse(Files.exists(media));
 +    assertFalse(Files.exists(thumb));
++  }
++}
+diff --git a/backend/src/test/java/top/asimov/pigeon/service/EpisodeSidecarOwnershipTest.java b/backend/src/test/java/top/asimov/pigeon/service/EpisodeSidecarOwnershipTest.java
+new file mode 100644
+index 0000000..5daa5c9
+--- /dev/null
++++ b/backend/src/test/java/top/asimov/pigeon/service/EpisodeSidecarOwnershipTest.java
+@@ -0,0 +1,108 @@
++package top.asimov.pigeon.service;
++
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.mockito.Mockito.lenient;
++
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.extension.ExtendWith;
++import org.junit.jupiter.api.io.TempDir;
++import org.mockito.Mock;
++import org.mockito.junit.jupiter.MockitoExtension;
++import org.springframework.context.ApplicationEventPublisher;
++import org.springframework.context.MessageSource;
++import top.asimov.pigeon.config.DownloadProperties;
++import top.asimov.pigeon.config.StorageProperties;
++import top.asimov.pigeon.mapper.ChannelMapper;
++import top.asimov.pigeon.mapper.EpisodeMapper;
++import top.asimov.pigeon.mapper.PlaylistEpisodeMapper;
++import top.asimov.pigeon.mapper.PlaylistMapper;
++import top.asimov.pigeon.service.storage.S3StorageService;
++
++/** Cleaning up one episode's sidecar files must not touch a different video's files. */
++@ExtendWith(MockitoExtension.class)
++class EpisodeSidecarOwnershipTest {
++
++  @Mock private EpisodeMapper episodeMapper;
++  @Mock private ApplicationEventPublisher eventPublisher;
++  @Mock private MessageSource messageSource;
++  @Mock private ChannelMapper channelMapper;
++  @Mock private PlaylistEpisodeMapper playlistEpisodeMapper;
++  @Mock private PlaylistMapper playlistMapper;
++  @Mock private StorageProperties storageProperties;
++  @Mock private S3StorageService s3StorageService;
++  @Mock private DownloadProperties downloadProperties;
++
++  private EpisodeService episodeService;
++
++  @TempDir Path tempDir;
++
++  @BeforeEach
++  void setUp() {
++    lenient().when(storageProperties.isS3Mode()).thenReturn(false);
++    episodeService = new EpisodeService(episodeMapper, eventPublisher, messageSource, channelMapper,
++        playlistEpisodeMapper, playlistMapper, storageProperties, s3StorageService, downloadProperties);
++  }
++
++  private Path touch(String name) throws IOException {
++    return Files.createFile(tempDir.resolve(name));
++  }
++
++  @Test
++  void deletingTitleKeepsTheFilesOfTitleDotRemix() throws IOException {
++    Path media = touch("Title.m4a");
++    Path ownVtt = touch("Title.en.vtt");
++    Path ownBareVtt = touch("Title.vtt");
++    Path ownJpg = touch("Title.jpg");
++    Path otherMedia = touch("Title.Remix.m4a");
++    Path otherVtt = touch("Title.Remix.en.vtt");
++    Path otherVtt2 = touch("Title.Remix.vtt");
++    Path otherJpg = touch("Title.Remix.jpg");
++
++    episodeService.deleteSubtitleFiles(media.toString());
++    episodeService.deleteThumbnailFiles(media.toString());
++
++    assertFalse(Files.exists(ownVtt));
++    assertFalse(Files.exists(ownBareVtt));
++    assertFalse(Files.exists(ownJpg));
++    assertTrue(Files.exists(media), "the media file itself is not a sidecar");
++    assertTrue(Files.exists(otherMedia));
++    assertTrue(Files.exists(otherVtt));
++    assertTrue(Files.exists(otherVtt2));
++    assertTrue(Files.exists(otherJpg));
++  }
++
++  @Test
++  void languageSuffixedSubtitlesStillMatch() throws IOException {
++    Path media = touch("Talk-abc123.m4a");
++    Path en = touch("Talk-abc123.en.vtt");
++    Path ptBr = touch("Talk-abc123.pt-BR.srt");
++    Path zh = touch("Talk-abc123.zh-Hans.vtt");
++    Path orig = touch("Talk-abc123.en-orig.vtt");
++
++    episodeService.deleteSubtitleFiles(media.toString());
++
++    assertFalse(Files.exists(en));
++    assertFalse(Files.exists(ptBr));
++    assertFalse(Files.exists(zh));
++    assertFalse(Files.exists(orig));
++  }
++
++  @Test
++  void matchersRejectOtherVideosAndKeepOwnNames() {
++    assertTrue(EpisodeService.isSubtitleSidecar("A.en.vtt", "A"));
++    assertTrue(EpisodeService.isSubtitleSidecar("A.srt", "A"));
++    assertFalse(EpisodeService.isSubtitleSidecar("A.Remix.en.vtt", "A"));
++    assertFalse(EpisodeService.isSubtitleSidecar("A.Remix.vtt", "A"));
++    assertFalse(EpisodeService.isSubtitleSidecar("A.Live.srt", "A"));
++    assertFalse(EpisodeService.isSubtitleSidecar("AB.en.vtt", "A"));
++    assertTrue(EpisodeService.isThumbnailSidecar("A.jpg", "A"));
++    assertTrue(EpisodeService.isThumbnailSidecar("A.webp", "A"));
++    assertFalse(EpisodeService.isThumbnailSidecar("A.Remix.jpg", "A"));
++    assertFalse(EpisodeService.isThumbnailSidecar("A.en.png", "A"));
 +  }
 +}
 diff --git a/backend/src/test/java/top/asimov/pigeon/service/IndividualRemovalSqlTest.java b/backend/src/test/java/top/asimov/pigeon/service/IndividualRemovalSqlTest.java
