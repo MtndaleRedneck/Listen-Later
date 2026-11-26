@@ -1,0 +1,206 @@
+--- a/src/main/java/top/asimov/pigeon/model/entity/User.java
++++ b/src/main/java/top/asimov/pigeon/model/entity/User.java
+@@ -1,6 +1,9 @@
+ package top.asimov.pigeon.model.entity;
+ 
++import com.baomidou.mybatisplus.annotation.FieldStrategy;
++import com.baomidou.mybatisplus.annotation.TableField;
+ import com.baomidou.mybatisplus.annotation.TableId;
++import com.fasterxml.jackson.annotation.JsonIgnore;
+ import com.fasterxml.jackson.annotation.JsonProperty;
+ import java.time.LocalDateTime;
+ import lombok.AllArgsConstructor;
+@@ -28,6 +31,13 @@
+ 
+   private String role; // admin | user
+ 
++  // Never written by entity-driven updates (updateById / wrapper entity sets): a stale loaded
++  // entity must not roll auth_version back after a password change bumps it. The only writer
++  // is the explicit setSql increment in the two password flows.
++  @TableField(updateStrategy = FieldStrategy.NEVER)
++  @JsonIgnore
++  private Long authVersion;
++
+   private String dateFormat;
+ 
+   private LocalDateTime createdAt;
+--- a/src/main/java/top/asimov/pigeon/service/AuthService.java
++++ b/src/main/java/top/asimov/pigeon/service/AuthService.java
+@@ -7,6 +7,7 @@
+ import org.springframework.stereotype.Service;
+ import org.springframework.util.ObjectUtils;
+ import top.asimov.pigeon.config.AuthProperties;
++import top.asimov.pigeon.config.AuthVersionInterceptor;
+ import top.asimov.pigeon.exception.BusinessException;
+ import top.asimov.pigeon.mapper.UserMapper;
+ import top.asimov.pigeon.model.entity.User;
+@@ -37,9 +38,11 @@
+ 
+   public User login(LoginRequest request) {
+     if (!isAuthEnabled()) {
+-      User user = getDefaultUser();
+-      StpUtil.login(user.getId());
+-      return user;
++      User rawUser = getUserById(DEFAULT_USER_ID);
++      StpUtil.login(rawUser.getId());
++      StpUtil.getTokenSession().set(AuthVersionInterceptor.SESSION_AUTH_VERSION_KEY,
++          rawUser.getAuthVersion() == null ? 0L : rawUser.getAuthVersion());
++      return sanitizeUser(rawUser);
+     }
+ 
+     boolean captchaEnabled = isLoginCaptchaEnabled();
+@@ -59,6 +62,11 @@
+ 
+     User user = checkUserCredentials(request.getUsername(), request.getPassword());
+     StpUtil.login(user.getId());
++    // Stamp the credential version captured WITH the verified password row. If a password
++    // change commits between the row read and here, this token carries the stale version
++    // and AuthVersionInterceptor rejects it on its first authenticated request.
++    StpUtil.getTokenSession().set(AuthVersionInterceptor.SESSION_AUTH_VERSION_KEY,
++        user.getAuthVersion() == null ? 0L : user.getAuthVersion());
+     return sanitizeUser(user);
+   }
+ 
+--- a/src/main/java/top/asimov/pigeon/service/AccountService.java
++++ b/src/main/java/top/asimov/pigeon/service/AccountService.java
+@@ -4,6 +4,7 @@
+ import cn.dev33.satoken.apikey.template.SaApiKeyUtil;
+ import cn.dev33.satoken.stp.StpUtil;
+ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
++import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+ import com.google.api.client.http.HttpRequestInitializer;
+ import com.fasterxml.jackson.core.JsonProcessingException;
+@@ -154,10 +155,19 @@
+ 
+     String salt = PasswordUtil.generateSalt(16);
+     String encryptedPassword = PasswordUtil.generateEncryptedPassword(newPassword, salt);
+-    user.setPassword(encryptedPassword);
+-    user.setSalt(salt);
+-    user.setUpdatedAt(LocalDateTime.now());
+-    userMapper.updateById(user);
++    userMapper.update(null, new LambdaUpdateWrapper<User>()
++        .eq(User::getId, userId)
++        .set(User::getPassword, encryptedPassword)
++        .set(User::getSalt, salt)
++        .set(User::getUpdatedAt, LocalDateTime.now())
++        .setSql("auth_version = auth_version + 1"));
++    // Eager cleanup, best-effort: the auth_version fence is the authoritative boundary and
++    // rejects pre-change sessions even if this fails (e.g. session store down).
++    try {
++      StpUtil.logout(userId);
++    } catch (Exception e) {
++      log.warn("auth_version bumped but eager session cleanup failed; fence still applies", e);
++    }
+   }
+ 
+   /**
+@@ -320,10 +330,19 @@
+     // Update to new password
+     String salt = PasswordUtil.generateSalt(16);
+     String encryptedPassword = PasswordUtil.generateEncryptedPassword(newPassword, salt);
+-    user.setPassword(encryptedPassword);
+-    user.setSalt(salt);
+-    user.setUpdatedAt(LocalDateTime.now());
+-    userMapper.updateById(user);
++    userMapper.update(null, new LambdaUpdateWrapper<User>()
++        .eq(User::getId, userId)
++        .set(User::getPassword, encryptedPassword)
++        .set(User::getSalt, salt)
++        .set(User::getUpdatedAt, LocalDateTime.now())
++        .setSql("auth_version = auth_version + 1"));
++    // Eager cleanup, best-effort: the auth_version fence is the authoritative boundary and
++    // rejects pre-change sessions even if this fails (e.g. session store down).
++    try {
++      StpUtil.logout(userId);
++    } catch (Exception e) {
++      log.warn("auth_version bumped but eager session cleanup failed; fence still applies", e);
++    }
+   }
+ 
+   /**
+--- a/src/main/java/top/asimov/pigeon/config/SaTokenConfigure.java
++++ b/src/main/java/top/asimov/pigeon/config/SaTokenConfigure.java
+@@ -10,10 +10,13 @@
+ 
+   private final AuthProperties authProperties;
+   private final AutoLoginInterceptor autoLoginInterceptor;
++  private final AuthVersionInterceptor authVersionInterceptor;
+ 
+-  public SaTokenConfigure(AuthProperties authProperties, AutoLoginInterceptor autoLoginInterceptor) {
++  public SaTokenConfigure(AuthProperties authProperties, AutoLoginInterceptor autoLoginInterceptor,
++      AuthVersionInterceptor authVersionInterceptor) {
+     this.authProperties = authProperties;
+     this.autoLoginInterceptor = autoLoginInterceptor;
++    this.authVersionInterceptor = authVersionInterceptor;
+   }
+ 
+   @Override
+@@ -24,5 +27,8 @@
+           .excludePathPatterns("/api/auth/**", "/api/rss/**", "/api/public/**");
+     }
+     registry.addInterceptor(new SaInterceptor()).addPathPatterns("/**");
++    registry.addInterceptor(authVersionInterceptor).addPathPatterns("/api/**")
++        .excludePathPatterns("/api/auth/login", "/api/auth/captcha", "/api/auth/captcha-config",
++            "/api/rss/**", "/api/public/**");
+   }
+ }
+--- a/src/main/java/top/asimov/pigeon/config/AuthVersionInterceptor.java
++++ b/src/main/java/top/asimov/pigeon/config/AuthVersionInterceptor.java
+@@ -0,0 +1,52 @@
++package top.asimov.pigeon.config;
++
++import cn.dev33.satoken.stp.StpUtil;
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import org.springframework.stereotype.Component;
++import org.springframework.web.servlet.HandlerInterceptor;
++import top.asimov.pigeon.mapper.UserMapper;
++import top.asimov.pigeon.model.entity.User;
++
++/**
++ * Credential-version fence. Login stamps the user row's auth_version into the token session
++ * (per-token metadata, never the shared account session). Every authenticated request compares
++ * the stamped version against the row's current auth_version via a single-row primary-key
++ * lookup (no cache). A password change bumps auth_version in the same SQL statement as the new
++ * password hash, so every session minted before the change - including a racing login that
++ * captured the pre-change version - is rejected and logged out on its next request. The fence
++ * lives in SQLite, not the session store, so recovering an old session-store snapshot cannot
++ * revive pre-change sessions. Tokens without a stamped version (pre-rollout sessions) are
++ * rejected: one re-login at rollout. A request already past this check when the bump commits
++ * cannot be cancelled retroactively; the boundary is per-request from commit onward.
++ */
++@Component
++public class AuthVersionInterceptor implements HandlerInterceptor {
++
++  public static final String SESSION_AUTH_VERSION_KEY = "authVersion";
++
++  private final UserMapper userMapper;
++  private final AuthProperties authProperties;
++
++  public AuthVersionInterceptor(UserMapper userMapper, AuthProperties authProperties) {
++    this.userMapper = userMapper;
++    this.authProperties = authProperties;
++  }
++
++  @Override
++  public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
++      Object handler) {
++    if (!authProperties.isEnabled() || !StpUtil.isLogin()) {
++      return true;
++    }
++    Object stamped = StpUtil.getTokenSession().get(SESSION_AUTH_VERSION_KEY);
++    User current = userMapper.selectById(StpUtil.getLoginIdAsString());
++    long currentVersion =
++        current == null || current.getAuthVersion() == null ? -1L : current.getAuthVersion();
++    if (!(stamped instanceof Number) || ((Number) stamped).longValue() != currentVersion) {
++      StpUtil.logoutByTokenValue(StpUtil.getTokenValue());
++      StpUtil.checkLogin();
++    }
++    return true;
++  }
++}
+--- a/src/main/resources/db/migration/V58__Add_auth_version_to_user.sql
++++ b/src/main/resources/db/migration/V58__Add_auth_version_to_user.sql
+@@ -0,0 +1 @@
++ALTER TABLE user ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0;

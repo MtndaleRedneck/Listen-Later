@@ -82,7 +82,7 @@ app says "Full delete isn't available on this server" and changes nothing.
 
 The add-on is optional. Everything else in the app works without it.
 
-- Patch: `server/individual-video-removal.patch`. It applies to PigeonPod v1.31.0 (commit
+- Patch: `server/patches/individual-delete-stock.patch` (stock PigeonPod) or `server/patches/individual-delete-custom.patch` (after the two sign-in patches below). `server/README.md` has the apply order. It applies to PigeonPod v1.31.0 (commit
   b6e1a49) and adds two routes under `/api/episode/individual/`. It has no database changes.
 - To use it: apply the patch to your PigeonPod source (`git apply`), rebuild your image, and
   restart. Back up your database and keep your previous image first so you can roll back.
@@ -94,20 +94,22 @@ The add-on is optional. Everything else in the app works without it.
 - Status: the patch compiles and its tests pass (full server test suite, including tests that run
   against a real SQLite database with the shipped migrations: channel-owned and shared videos are
   only unlinked, a download starting mid-delete gives "Still downloading" and changes nothing).
-  That was run on PigeonPod v1.31.0 with the two optional changes below applied first. A running
-  server with a real client has not been end-to-end tested yet.
+  Both variants were also built and run in Docker from a clean checkout with synthetic data
+  (`server/fixture/`): sign-in, the capability check, refusal when signed out, removed, already
+  gone, still downloading, not in the feed, and shared (only unlinked) all behave as described.
+  A real phone against a running server has not been tested.
 
 Videos still waiting to send, or under "Couldn't get it", are removed from the list on the
 phone only; nothing is sent to the server for them.
 
-## Optional: staying signed in across server restarts (Described, not tested on a clean install)
+## Optional: staying signed in across server restarts (Tested on a clean fixture)
 
 These two changes are independent of full delete and optional. Without them PigeonPod keeps
 sign-ins in memory, so every server restart signs you out; Listen Later then asks you to sign in
 again and keeps shared videos waiting meanwhile. Both are source patches against PigeonPod v1.31.0
-(commit b6e1a49), applied in this order: first the Redis session patch at the repository root
-(`git apply -p1`), then the sign-in fence patch inside `backend/` (`git apply -p1`), then, if
-wanted, the full delete patch above.
+(commit b6e1a49), in `server/patches/`, applied in this order: first `pigeon-0.4.diff` at the
+repository root (`git apply -p1`), then `pigeon-0.5-fence.diff` inside `backend/`
+(`git apply -p1`), then, if wanted, the custom full delete patch above.
 
 - Redis sessions: upgrades Sa-Token from 1.44.0 to 1.46.0, adds the Redis session store, and
   answers HTTP 503 (not 401) when Redis is down, so Listen Later keeps your sign-in and retries.
@@ -115,11 +117,12 @@ wanted, the full delete patch above.
   password change signs out older sessions.
 - Setup: run Redis on an internal network with no published port, a password you generate, and
   `appendonly yes`. Give the app the standard Spring Boot settings `SPRING_DATA_REDIS_HOST`,
-  `SPRING_DATA_REDIS_PORT`, `SPRING_DATA_REDIS_USERNAME` and `SPRING_DATA_REDIS_PASSWORD`
-  (names not yet verified against a clean install). Never commit the values.
-- Check on a clean setup before relying on it: sign in, restart only the app and confirm you are
-  still signed in; stop Redis and confirm a 503; change the password and confirm the old session
-  is refused.
+  `SPRING_DATA_REDIS_PORT` and `SPRING_DATA_REDIS_PASSWORD` (checked on a clean fixture).
+  Never commit the values.
+- Checked on a clean fixture: sign in, restart only the app and you are still signed in; stop
+  Redis and requests get a 503 (it took about a minute to answer), and the session works again
+  once Redis returns; after a password change the old session is refused and the new password
+  signs in. Repeat these on your own setup before relying on it.
 - Update and rollback: back up your database and keep the previous image and compose file. The
   image build skips tests, so run `mvn test` separately. Going back to a stock image returns to
   in-memory sign-ins; the extra column is harmless.

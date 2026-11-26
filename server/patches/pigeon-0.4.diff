@@ -1,0 +1,78 @@
+diff --git a/backend/pom.xml b/backend/pom.xml
+index 734dade..cdf6ccd 100644
+--- a/backend/pom.xml
++++ b/backend/pom.xml
+@@ -18,7 +18,7 @@
+ 
+   <properties>
+     <java.version>17</java.version>
+-    <sa-token.version>1.44.0</sa-token.version>
++    <sa-token.version>1.46.0</sa-token.version>
+     <mybatis-plus.version>3.5.12</mybatis-plus.version>
+     <aws.sdk.version>2.31.14</aws.sdk.version>
+   </properties>
+@@ -78,6 +78,15 @@
+       <artifactId>sa-token-apikey</artifactId>
+       <version>${sa-token.version}</version>
+     </dependency>
++    <dependency>
++      <groupId>cn.dev33</groupId>
++      <artifactId>sa-token-redis-template</artifactId>
++      <version>${sa-token.version}</version>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.commons</groupId>
++      <artifactId>commons-pool2</artifactId>
++    </dependency>
+     <dependency>
+       <groupId>com.baomidou</groupId>
+       <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+diff --git a/backend/src/main/java/top/asimov/pigeon/config/StpInterfaceImpl.java b/backend/src/main/java/top/asimov/pigeon/config/StpInterfaceImpl.java
+index 3727683..de807ec 100644
+--- a/backend/src/main/java/top/asimov/pigeon/config/StpInterfaceImpl.java
++++ b/backend/src/main/java/top/asimov/pigeon/config/StpInterfaceImpl.java
+@@ -31,7 +31,7 @@ public class StpInterfaceImpl implements StpInterface {
+   }
+ 
+   @Override
+-  public SaDisableWrapperInfo isDisabled(Object loginId, String service) {
+-    return StpInterface.super.isDisabled(loginId, service);
++  public SaDisableWrapperInfo isDisabled(Object loginId, String service, String loginType) {
++    return StpInterface.super.isDisabled(loginId, service, loginType);
+   }
+ }
+diff --git a/backend/src/main/java/top/asimov/pigeon/handler/GlobalExceptionHandler.java b/backend/src/main/java/top/asimov/pigeon/handler/GlobalExceptionHandler.java
+index d751ead..6f2f398 100644
+--- a/backend/src/main/java/top/asimov/pigeon/handler/GlobalExceptionHandler.java
++++ b/backend/src/main/java/top/asimov/pigeon/handler/GlobalExceptionHandler.java
+@@ -7,6 +7,9 @@ import java.util.Locale;
+ import java.util.stream.Collectors;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.context.MessageSource;
++import org.springframework.dao.QueryTimeoutException;
++import org.springframework.data.redis.RedisConnectionFailureException;
++import org.springframework.data.redis.RedisSystemException;
+ import org.springframework.context.i18n.LocaleContextHolder;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.BindException;
+@@ -75,6 +78,20 @@ public class GlobalExceptionHandler {
+     return SaResult.code(400).setMsg(message);
+   }
+ 
++  /**
++   * Session store (Redis) failures: HTTP 503, generic message to clients,
++   * exception detail logged server-side only. Narrow types on purpose:
++   * never blanket DataAccessException, so unrelated DB errors and genuine
++   * 401s keep their current handling.
++   */
++  @ExceptionHandler({RedisConnectionFailureException.class, RedisSystemException.class,
++      QueryTimeoutException.class})
++  @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
++  public SaResult handleSessionStoreException(RuntimeException e) {
++    log.warn("[session-store] unavailable: type={}", e.getClass().getSimpleName(), e);
++    return SaResult.code(503).setMsg("Session store temporarily unavailable, please retry");
++  }
++
+   /**
+    * Handle all other runtime exceptions
+    */
