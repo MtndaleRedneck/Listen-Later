@@ -19,9 +19,22 @@ def http(method, path, token=None, body=None):
     return code, j, txt
 
 def login(user="root", pw="Root@123"):
-    code, j, txt = http("POST", "/api/auth/login", body={"username": user, "password": pw})
+    """The app reads the session token from the pigeonpod= Set-Cookie, so the fixture does too."""
+    req = urllib.request.Request(BASE + "/api/auth/login", method="POST",
+                                 data=json.dumps({"username": user, "password": pw}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            code, txt, cookies = r.status, r.read().decode(), r.headers.get_all("Set-Cookie") or []
+    except urllib.error.HTTPError as e:
+        code, txt, cookies = e.code, e.read().decode(), []
+    try: j = json.loads(txt)
+    except Exception: j = None
     tok = None
-    if j and isinstance(j.get("data"), dict): tok = j["data"].get("token")
+    for c in cookies:
+        if c.startswith("pigeonpod="): tok = c.split(";")[0].split("=", 1)[1]
+    if not tok and j and isinstance(j.get("data"), dict): tok = j["data"].get("token")
+    if not tok: print("login reply:", code, txt[:200], cookies, flush=True)
     return code, j, tok
 
 def sh(cmd): return subprocess.run(cmd, shell=True, capture_output=True, text=True)
