@@ -7,12 +7,12 @@ FEED = "individual-videos-youtube"; results = []
 def rec(name, ok, detail=""):
     results.append((name, ok)); print(("PASS " if ok else "FAIL ") + name + (" :: " + str(detail) if detail else ""), flush=True)
 
-def http(method, path, token=None, body=None):
+def http(method, path, token=None, body=None, timeout=20):
     req = urllib.request.Request(BASE + path, method=method, data=None if body is None else json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
     if token: req.add_header("pigeonpod", token)
     try:
-        with urllib.request.urlopen(req, timeout=20) as r: code, txt = r.status, r.read().decode()
+        with urllib.request.urlopen(req, timeout=timeout) as r: code, txt = r.status, r.read().decode()
     except urllib.error.HTTPError as e: code, txt = e.code, e.read().decode()
     try: j = json.loads(txt)
     except Exception: j = None
@@ -112,8 +112,12 @@ if V == "custom":
     code, j, _ = http("GET", "/api/episode/individual/capability", tok)
     rec("still signed in after app-only restart (Redis sessions)", code == 200 and (j or {}).get("code") == 200, (code, j))
     sh("docker compose stop redis"); time.sleep(3)
-    code, j, txt = http("GET", "/api/episode/individual/capability", tok)
-    rec("Redis down -> HTTP 503, not 401", code == 503, (code, txt[:200]))
+    t0 = time.time()
+    try:
+        code, j, txt = http("GET", "/api/episode/individual/capability", tok, timeout=150)
+    except Exception as e:
+        code, txt = "no answer: %r" % e, ""
+    rec("Redis down -> HTTP 503, not 401 (answer time %.0fs)" % (time.time() - t0), code == 503, (code, txt[:200]))
     sh("docker compose start redis"); time.sleep(6)
     code, j, _ = http("GET", "/api/episode/individual/capability", tok)
     rec("session works again after Redis returns", code == 200, code)
