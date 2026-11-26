@@ -146,7 +146,7 @@ private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.screenHeaderRow()) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
-        val titleSize = headerTitleSize()
+        val titleSize = headerTitleSize(capForPill = true)
         Text("Listen Later", modifier = Modifier.testTag("screen_title"), fontSize = titleSize, fontWeight = FontWeight.Bold, color = TextC, maxLines = 1, overflow = TextOverflow.Ellipsis)
         // Status pill centered in the free space between the name and the gear tile;
         // bounded so a long status wraps instead of competing with the title.

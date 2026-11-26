@@ -216,14 +216,16 @@ fun HTextButton(onClick: () -> Unit, content: @Composable () -> Unit) {
 }
 
 /**
- * One size for every screen title (Home, Settings, Feedback), so the headers can never drift apart.
- * Narrow phone plus a large font scale: the title would take the width the Home status pill needs,
- * so it shrinks to 18sp unscaled there; every screen applies the same rule.
+ * Screen title size. Home passes capForPill = true: on a narrow phone with a large font scale the title
+ * would take the width the status pill needs, so it stays at a fixed 18dp there (existing behaviour).
+ * Settings and Feedback have no pill and keep their natural size (20sp, scaling with the font). At the tested
+ * font scales (1.0 and 1.3) the 48dp button tiles govern the header row height on every screen, so it does not
+ * depend on the title size; very large scales (about 1.6 and up) can grow the title past 48dp and are untested.
  */
 @androidx.compose.runtime.Composable
-fun headerTitleSize(): androidx.compose.ui.unit.TextUnit {
+fun headerTitleSize(capForPill: Boolean = false): androidx.compose.ui.unit.TextUnit {
     val cfg = androidx.compose.ui.platform.LocalConfiguration.current
-    return if (cfg.screenWidthDp < 400 && cfg.fontScale > 1.15f) (18f / cfg.fontScale).sp else 20.sp
+    return if (capForPill && cfg.screenWidthDp < 400 && cfg.fontScale > 1.15f) (18f / cfg.fontScale).sp else 20.sp
 }
 
 /** The one header row geometry shared by all screens: 12dp above, 8dp below, 48dp button row. */

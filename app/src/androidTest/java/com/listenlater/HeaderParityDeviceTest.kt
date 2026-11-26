@@ -106,7 +106,7 @@ class HeaderParityDeviceTest {
                 .grantRuntimePermission(ctx.packageName, "android.permission.POST_NOTIFICATIONS")
         }
         val i = Intent(ctx, MainActivity::class.java).putExtra("demo", true)
-        ActivityScenario.launch<MainActivity>(i).use {
+        ActivityScenario.launch<MainActivity>(i).use { scenario ->
             ready("Listen Later", "Settings")
             val home = measure("Settings"); shot("home")
             rule.onNodeWithContentDescription("Settings").performClick()
@@ -115,14 +115,27 @@ class HeaderParityDeviceTest {
             rule.onNodeWithText("Send feedback, report a bug, or suggest a feature").performScrollTo().performClick()
             ready("Feedback", "Back")
             val fb = measure("Back"); shot("feedback")
-            val line = "lane=$laneTag home=$home settings=$set feedback=$fb"
+            // The activity's own configuration is what Compose's LocalConfiguration reads (not the target context's).
+            var dm = ctx.resources.configuration
+            scenario.onActivity { dm = it.resources.configuration }
+            val shrink = dm.screenWidthDp < 400 && dm.fontScale > 1.15f
+            val line = "lane=$laneTag shrink=$shrink widthDp=${dm.screenWidthDp} fontScale=${dm.fontScale} home=$home settings=$set feedback=$fb"
             android.util.Log.i("HeaderParity", line)
             File(dir, "$laneTag-values.txt").writeText(line + "\n")
             for ((name, m) in listOf("settings" to set, "feedback" to fb)) {
                 assertEquals("$name header top", home.header.top, m.header.top, 0f)
                 assertEquals("$name header bottom", home.header.bottom, m.header.bottom, 0f)
-                assertEquals("$name title top", home.title.top, m.title.top, 0f)
-                assertEquals("$name title height", home.title.height, m.title.height, 0f)
+                if (shrink) {
+                    // Home's title is capped at a fixed 18dp to leave room for the status pill; Settings and
+                    // Feedback keep their natural 20sp. The title boxes differ in size by design here, so the
+                    // title must be vertically centred on the same line; everything that sets the header
+                    // height (header box, buttons, first content) is still compared exactly below.
+                    assertEquals("$name title centre y", home.title.center.y, m.title.center.y, 1f)
+                    assertTrue("$name title fits inside the header", m.title.top >= m.header.top && m.title.bottom <= m.header.bottom)
+                } else {
+                    assertEquals("$name title top", home.title.top, m.title.top, 0f)
+                    assertEquals("$name title height", home.title.height, m.title.height, 0f)
+                }
                 assertEquals("$name button top", home.button.top, m.button.top, 0f)
                 assertEquals("$name button height", home.button.height, m.button.height, 0f)
                 assertEquals("$name first content top", home.content.top, m.content.top, 0f)

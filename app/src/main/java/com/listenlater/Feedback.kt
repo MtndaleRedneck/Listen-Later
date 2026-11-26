@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -84,7 +85,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.screenHeaderRow()) {
             HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
             Spacer(Modifier.width(8.dp))
-            Text("Feedback", modifier = Modifier.testTag("screen_title"), color = TextC, fontSize = headerTitleSize(), fontWeight = FontWeight.Bold)
+            Text("Feedback", modifier = Modifier.testTag("screen_title"), color = TextC, fontSize = headerTitleSize(), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         BackHandler { onBack() }
 
