@@ -238,6 +238,23 @@ if [ -n "$B" ]; then
   tap_text "Delete"; sleep 2
   adb exec-out screencap -p > $OUT/v112-after-delete.png
 else echo "REQUIRED-MISS: demo row not found"; fi
+# v112: a row still waiting to send: long-press -> dialog -> Delete removes it from the real queue (no server call).
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true --ez queuestates true; sleep 6
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+ROW=$(adb shell cat /sdcard/ui.xml | grep -o 'text="An extremely long shared video title[^"]*"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1)
+[ -z "$ROW" ] && ROW=$(adb shell cat /sdcard/ui.xml | grep -o 'text="Video waiting to send"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1)
+B=$(echo "$ROW" | grep -o "\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]" | head -1)
+if [ -n "$B" ]; then
+  X1=$(echo $B | cut -d'[' -f2 | cut -d',' -f1); Y1=$(echo $B | cut -d'[' -f2 | cut -d',' -f2 | cut -d']' -f1)
+  X2=$(echo $B | cut -d'[' -f3 | cut -d',' -f1); Y2=$(echo $B | cut -d'[' -f3 | cut -d',' -f2 | cut -d']' -f1)
+  adb exec-out screencap -p > $OUT/v112-queued-before.png
+  adb shell "input swipe $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )) $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )) 1200"
+  sleep 1.5
+  adb exec-out screencap -p > $OUT/v112-queued-dialog.png
+  tap_text "Delete"; sleep 3
+  adb exec-out screencap -p > $OUT/v112-queued-after.png
+else echo "REQUIRED-MISS: queued demo row not found"; fi
 ls -la $OUT
 adb shell wm size reset
 adb shell wm density reset
