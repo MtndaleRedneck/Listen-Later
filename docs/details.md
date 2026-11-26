@@ -87,6 +87,7 @@ The add-on is optional. Everything else in the app works without it.
 - To use it: apply the patch to your PigeonPod source (`git apply`), rebuild your image, and
   restart. Back up your database and keep your previous image first so you can roll back.
   If you already carry other patches, apply this one last. Re-apply it after PigeonPod updates.
+- Admin only: the delete route needs the PigeonPod admin account. A non-admin gets a plain error, and Listen Later shows "Couldn't delete. Try again." The server reports "still downloading" and "not in this feed" inside a normal HTTP 200 reply, as PigeonPod does for its other routes; the app reads that result code, never just the HTTP status.
 - What it does: removes the video from the Individual Videos feed and deletes its files, unless
   it is downloading right now ("Still downloading. Try again shortly."). It can't be undone.
   Sharing the link again adds it fresh. Episodes your podcast app already downloaded are not touched.
