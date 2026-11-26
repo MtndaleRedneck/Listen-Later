@@ -556,14 +556,8 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 scope.launch {
                     // The worker holds this lock for a whole send, so wait for it: either the share is
                     // still queued and we remove it, or it just reached the server and needs a server delete.
-                    val removed = QueueLock.mutex.withLock {
-                        val still = queueStore.shareQueue().any { it.url == target.url }
-                        if (still) {
-                            queueStore.removeFromQueue(target.url)
-                            Notifier.clearRedirectNotice(context, target.url)
-                        }
-                        still
-                    }
+                    val removed = QueueLock.removeLocal(queueStore, target.url)
+                    if (removed) { Notifier.clearRedirectNotice(context, target.url); Notifier.cancelSkipped(context, target.url) }
                     queued = queueStore.shareQueue()
                     deletingKey = null
                     Notifier.toast(
@@ -574,10 +568,16 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 }
             }
             is DeleteTarget.Parked -> {
-                queueStore.removeSkipped(target.url)
-                Notifier.cancelSkipped(context, target.url)
-                skipped = queueStore.skipped()
-                Notifier.toast(context, "Removed.")
+                deletingKey = target.url
+                scope.launch {
+                    val removed = QueueLock.removeLocal(queueStore, target.url)
+                    if (removed) Notifier.cancelSkipped(context, target.url)
+                    skipped = queueStore.skipped()
+                    queued = queueStore.shareQueue()
+                    deletingKey = null
+                    Notifier.toast(context, if (removed) "Removed." else "That one already went through. Long-press it again to delete.")
+                    load()
+                }
             }
         }
     }

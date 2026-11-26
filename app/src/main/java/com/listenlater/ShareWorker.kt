@@ -17,6 +17,21 @@ import java.util.concurrent.TimeUnit
 /** One worker run at a time: REPLACE can overlap a canceled run's blocking network call. */
 object QueueLock {
     val mutex = Mutex()
+
+    /**
+     * Deletes a waiting share or a parked one without racing a send. A run holds [mutex] for its
+     * whole send, so this waits for it and then looks at the real state: true when the item was
+     * still waiting or parked and is now gone, false when the send already finished (it is on
+     * the server now and needs a server delete instead). A deleted item can't come back: the
+     * next run re-reads the queue, and only a new share of the same link adds it again.
+     */
+    suspend fun removeLocal(queue: QueueStore, url: String): Boolean = mutex.withLock {
+        val waiting = queue.shareQueue().any { it.url == url }
+        val parked = queue.skipped().any { it.url == url }
+        if (waiting) queue.removeFromQueue(url)
+        if (parked) queue.removeSkipped(url)
+        waiting || parked
+    }
 }
 
 /**
