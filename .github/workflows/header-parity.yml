@@ -1,0 +1,56 @@
+name: Header parity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [header-exact-1125]
+    paths:
+      - 'app/**'
+      - 'scripts/header-parity.sh'
+      - '.github/workflows/header-parity.yml'
+
+# Isolated proof lane: runs HeaderParityDeviceTest on an emulator at the tester's phone size,
+# records Home <-> Settings and uploads screenshots, the printed HEADER_PARITY numbers and the video.
+# No signing secrets, no publish. Artifacts are demo-data screenshots only, kept 1 day.
+
+permissions:
+  contents: read
+
+jobs:
+  header-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3.5.0
+      - name: Android SDK 37
+        run: |
+          if ! ls "$ANDROID_HOME/platforms" | grep -q '^android-37'; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0" >/dev/null
+          fi
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: ./scripts/header-parity.sh
+      - name: Header parity numbers
+        if: always()
+        run: grep -h "HEADER_PARITY\|HeaderParity" header-parity/gradle.log header-parity/logcat-parity.txt 2>/dev/null | head -20 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: header-parity
+          path: header-parity/
+          retention-days: 1

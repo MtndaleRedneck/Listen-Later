@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,14 +60,13 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     Column(
-        Modifier.fillMaxSize().background(Bg).verticalScroll(scrollState).padding(16.dp),
+        Modifier.fillMaxSize().background(Bg).verticalScroll(scrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.offset(x = (-4).dp, y = (-4).dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp).testTag("screen_header")) {
             HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
             Spacer(Modifier.width(8.dp))
-            Text("Settings", color = TextC, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Settings", modifier = Modifier.testTag("screen_title"), color = TextC, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Spacer(Modifier.height(10.dp))
         BackHandler { onBack() }
 
         SettingsSection("Account") {
@@ -282,7 +282,7 @@ fun SettingsScreen(
 @Composable
 fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxWidth()
+        Modifier.fillMaxWidth().then(if (title == "Account") Modifier.testTag("content_top") else Modifier)
             .shadow(3.dp, RoundedCornerShape(20.dp))
             .clip(RoundedCornerShape(20.dp))
             .background(CardGradient)

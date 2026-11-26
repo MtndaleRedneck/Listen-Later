@@ -48,6 +48,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.sync.withLock
 import androidx.compose.foundation.verticalScroll
@@ -142,14 +143,14 @@ private val TopArrowIcon: ImageVector = ImageVector.Builder(
 private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     val ctx = LocalContext.current
     val icon = remember { ctx.packageManager.getApplicationIcon(ctx.packageName).toImageBitmap() }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 0.dp, end = 0.dp, top = 12.dp, bottom = 8.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp).testTag("screen_header")) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
         // Narrow phone plus a large font scale: the title would take the width the status pill needs
         // ("Disconnected" clipped at 360dp x 1.3), so the title stays at 18sp unscaled there.
         val titleCfg = LocalConfiguration.current
         val titleSize = if (titleCfg.screenWidthDp < 400 && titleCfg.fontScale > 1.15f) (18f / titleCfg.fontScale).sp else 20.sp
-        Text("Listen Later", fontSize = titleSize, fontWeight = FontWeight.Bold, color = TextC, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("Listen Later", modifier = Modifier.testTag("screen_title"), fontSize = titleSize, fontWeight = FontWeight.Bold, color = TextC, maxLines = 1, overflow = TextOverflow.Ellipsis)
         // Status pill centered in the free space between the name and the gear tile;
         // bounded so a long status wraps instead of competing with the title.
         BoxWithConstraints(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -667,7 +668,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
 
             if (hasRows) {
                 Box(
-                    Modifier.weight(1f)
+                    Modifier.weight(1f).testTag("content_top")
                         .shadow(4.dp, RoundedCornerShape(20.dp))
                         .clip(RoundedCornerShape(20.dp))
                         .background(CardGradient)
