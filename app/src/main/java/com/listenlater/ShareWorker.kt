@@ -8,7 +8,9 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,13 +27,13 @@ object QueueLock {
      * the server now and needs a server delete instead). A deleted item can't come back: the
      * next run re-reads the queue, and only a new share of the same link adds it again.
      */
-    suspend fun removeLocal(queue: QueueStore, url: String): Boolean = mutex.withLock {
+    suspend fun removeLocal(queue: QueueStore, url: String): Boolean = withContext(Dispatchers.IO) { mutex.withLock {
         val waiting = queue.shareQueue().any { it.url == url }
         val parked = queue.skipped().any { it.url == url }
         if (waiting) queue.removeFromQueue(url)
         if (parked) queue.removeSkipped(url)
         waiting || parked
-    }
+    } }
 }
 
 /**
