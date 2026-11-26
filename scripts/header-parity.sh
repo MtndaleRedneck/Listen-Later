@@ -46,7 +46,7 @@ REC=$!
 sleep 2
 tap() {
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null
-  adb shell cat /sdcard/ui.xml | tr '>' '>\n' | grep "content-desc=\"$1\"" | head -1 | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1 | grep -o '[0-9]*' | tr '\n' ' ' | awk '{print int(($1+$3)/2), int(($2+$4)/2)}' > /tmp/xy
+  adb shell cat /sdcard/ui.xml | sed 's/<node /\n<node /g' | grep -F "content-desc=\"$1\"" | head -1 | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1 | grep -o '[0-9]*' | tr '\n' ' ' | awk '{print int(($1+$3)/2), int(($2+$4)/2)}' > /tmp/xy
   if ! test -s /tmp/xy || ! grep -Eq '^[0-9]+ [0-9]+$' /tmp/xy; then echo "button $1 not found or bad coordinates: $(cat /tmp/xy 2>/dev/null)"; kill $REC 2>/dev/null || true; exit 1; fi
   read -r X Y < /tmp/xy
   if [ "$Y" -gt 2807 ] || [ "$X" -gt 1440 ]; then echo "tap $X $Y outside the 1440x2807 screen"; kill $REC 2>/dev/null || true; exit 1; fi
