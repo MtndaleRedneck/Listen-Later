@@ -41,14 +41,16 @@ adb shell am force-stop com.listenlater
 adb shell am start -n com.listenlater/.MainActivity --ez demo true
 sleep 12
 adb shell dumpsys window | grep -E 'mCurrentFocus' | tee $OUT/focus-before-record.txt | grep -q com.listenlater || { echo "the app is not in the foreground"; exit 1; }
-adb shell screenrecord --bit-rate 8000000 --time-limit 45 /sdcard/switch.mp4 &
+adb shell screenrecord --bit-rate 8000000 --size 720x1404 --time-limit 45 /sdcard/switch.mp4 &
 REC=$!
 sleep 2
 tap() {
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null
-  adb shell cat /sdcard/ui.xml | grep -o "content-desc=\"$1\"[^>]*bounds=\"\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]\"" | head -1 | grep -o '\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]' | tr -d '[]' | tr ',' ' ' | awk '{print int(($1+$3)/2), int(($2+$4)/2)}' > /tmp/xy
-  test -s /tmp/xy || { echo "button $1 not found"; kill $REC 2>/dev/null || true; exit 1; }
-  adb shell input tap $(cat /tmp/xy)
+  adb shell cat /sdcard/ui.xml | tr '>' '>\n' | grep "content-desc=\"$1\"" | head -1 | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1 | grep -o '[0-9]*' | tr '\n' ' ' | awk '{print int(($1+$3)/2), int(($2+$4)/2)}' > /tmp/xy
+  if ! test -s /tmp/xy || ! grep -Eq '^[0-9]+ [0-9]+$' /tmp/xy; then echo "button $1 not found or bad coordinates: $(cat /tmp/xy 2>/dev/null)"; kill $REC 2>/dev/null || true; exit 1; fi
+  read -r X Y < /tmp/xy
+  if [ "$Y" -gt 2807 ] || [ "$X" -gt 1440 ]; then echo "tap $X $Y outside the 1440x2807 screen"; kill $REC 2>/dev/null || true; exit 1; fi
+  adb shell input tap $X $Y
 }
 tap Settings; sleep 3
 tap Back; sleep 3

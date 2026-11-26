@@ -40,9 +40,40 @@ class HeaderParityDeviceTest {
     private val laneTag get() = InstrumentationRegistry.getArguments().getString("lane") ?: "default"
     private val dir get() = File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null), "header-parity").apply { mkdirs() }
 
-    private fun shot(name: String) {
-        val bmp = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+    /**
+     * uiAutomation.takeScreenshot() can return a stale or not-yet-drawn frame (a run showed a blank Home
+     * and the previous screen under the next one's name). So: settle, then take frames until two in a
+     * row are pixel-identical AND the title area really has text ink, or fail. The semantics bounds
+     * stay the oracle; this makes the saved PNGs the same state as the numbers.
+     */
+    private fun shot(name: String, expectInk: Boolean = true) {
+        val ui = InstrumentationRegistry.getInstrumentation().uiAutomation
+        Thread.sleep(1000)
+        var prev: Bitmap? = null
+        var good: Bitmap? = null
+        for (attempt in 1..12) {
+            rule.waitForIdle()
+            val cur = ui.takeScreenshot() ?: continue
+            val same = prev != null && prev.width == cur.width && prev.height == cur.height && prev.sameAs(cur)
+            val ink = !expectInk || titleInk(cur, rule.onNodeWithTag("screen_title").fetchSemanticsNode().boundsInWindow) > 200
+            if (same && ink) { good = cur; break }
+            prev = cur
+            Thread.sleep(500)
+        }
+        val bmp = good ?: throw AssertionError("screenshot $name never settled to a stable frame with the title drawn")
         FileOutputStream(File(dir, "$laneTag-$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    private fun titleInk(bmp: Bitmap, r: Rect): Int {
+        var n = 0
+        val x0 = r.left.toInt().coerceIn(0, bmp.width - 1); val x1 = r.right.toInt().coerceIn(x0 + 1, bmp.width)
+        val y0 = r.top.toInt().coerceIn(0, bmp.height - 1); val y1 = r.bottom.toInt().coerceIn(y0 + 1, bmp.height)
+        for (y in y0 until y1) for (x in x0 until x1) {
+            val c = bmp.getPixel(x, y)
+            val lum = ((c shr 16 and 255) * 299 + (c shr 8 and 255) * 587 + (c and 255) * 114) / 1000
+            if (lum > 170) n++
+        }
+        return n
     }
 
     private fun titleText() = rule.onNodeWithTag("screen_title").fetchSemanticsNode()
@@ -56,7 +87,7 @@ class HeaderParityDeviceTest {
             }
         } catch (t: Throwable) {
             // Fail closed, but leave the evidence: what the semantics tree and the screen really looked like.
-            runCatching { shot("FAILED-$title") }
+            runCatching { shot("FAILED-$title", expectInk = false) }
             runCatching { rule.onAllNodes(androidx.compose.ui.test.isRoot()).printToLog("HeaderParity") }
             android.util.Log.e("HeaderParity", "not ready: $title (button $button)", t)
             throw t
