@@ -1,5 +1,7 @@
 package com.listenlater
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import android.content.Intent
 import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Rect
@@ -43,7 +45,7 @@ class HeaderParityDeviceTest {
     }
 
     private fun titleText() = rule.onNodeWithTag("screen_title").fetchSemanticsNode()
-        .config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text }
+        .config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }
 
     /** Wait until THIS screen (by its own title text) is on screen and laid out, never a neighbour's header. */
     private fun ready(title: String, button: String) {
