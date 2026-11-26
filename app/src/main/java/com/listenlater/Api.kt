@@ -225,27 +225,6 @@ class Api(private val server: String, private val token: String?, testClient: Ok
         if (url.isEmpty()) throw ApiError("No feed link returned")
         return url
     }
-}
-
-/** The one redirect still honored: exact same origin (scheme, host and port), a single hop. */
-internal fun redirectTargetAllowed(from: HttpUrl, to: HttpUrl?, alreadyFollowed: Boolean): Boolean =
-    !alreadyFollowed && to != null && to.scheme == from.scheme && to.host == from.host && to.port == from.port && to.isHttps
-
-/**
- * Builds the request for the one allowed same-origin hop with OkHttp's standard redirect
- * semantics: 307/308 keep the method and body; 301/302/303 turn anything but GET/HEAD into
- * a plain GET without a body.
- */
-internal fun followRequest(req: Request, code: Int, url: HttpUrl): Request = when {
-    code == 307 || code == 308 || req.method == "GET" || req.method == "HEAD" -> req.newBuilder().url(url).build()
-    else -> req.newBuilder().url(url).get().build()
-}
-
-/** scheme://host(:port) only, so a redirect target's path or query never leaks into UI or logs. */
-private fun originOf(url: HttpUrl): String {
-    val default = if (url.isHttps) 443 else 80
-    val port = if (url.port != default) ":${url.port}" else ""
-    return "${url.scheme}://${url.host}$port"
 
     /**
      * Asks the server whether the full-delete add-on is installed. Only a proper JSON answer that
@@ -290,4 +269,26 @@ private fun originOf(url: HttpUrl): String {
             else -> throw UnexpectedResponse(200)
         }
     }
+}
+
+/** The one redirect still honored: exact same origin (scheme, host and port), a single hop. */
+internal fun redirectTargetAllowed(from: HttpUrl, to: HttpUrl?, alreadyFollowed: Boolean): Boolean =
+    !alreadyFollowed && to != null && to.scheme == from.scheme && to.host == from.host && to.port == from.port && to.isHttps
+
+/**
+ * Builds the request for the one allowed same-origin hop with OkHttp's standard redirect
+ * semantics: 307/308 keep the method and body; 301/302/303 turn anything but GET/HEAD into
+ * a plain GET without a body.
+ */
+internal fun followRequest(req: Request, code: Int, url: HttpUrl): Request = when {
+    code == 307 || code == 308 || req.method == "GET" || req.method == "HEAD" -> req.newBuilder().url(url).build()
+    else -> req.newBuilder().url(url).get().build()
+}
+
+/** scheme://host(:port) only, so a redirect target's path or query never leaks into UI or logs. */
+private fun originOf(url: HttpUrl): String {
+    val default = if (url.isHttps) 443 else 80
+    val port = if (url.port != default) ":${url.port}" else ""
+    return "${url.scheme}://${url.host}$port"
+
 }
