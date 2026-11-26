@@ -570,6 +570,9 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                     if (removed == null) {
                         deletingKey = null
                         Notifier.toast(context, "Still sending. Try again in a moment.")
+                        // The timeout can land just after the removal finished; show the real list.
+                        skipped = queueStore.skipped()
+                        queued = queueStore.shareQueue()
                         return@launch
                     }
                     if (removed) { Notifier.clearRedirectNotice(context, target.url); Notifier.cancelSkipped(context, target.url) }
@@ -589,6 +592,9 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                     if (removed == null) {
                         deletingKey = null
                         Notifier.toast(context, "Still sending. Try again in a moment.")
+                        // The timeout can land just after the removal finished; show the real list.
+                        skipped = queueStore.skipped()
+                        queued = queueStore.shareQueue()
                         return@launch
                     }
                     if (removed) Notifier.cancelSkipped(context, target.url)
