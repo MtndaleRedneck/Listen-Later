@@ -1,0 +1,635 @@
+diff --git a/backend/src/main/java/top/asimov/pigeon/controller/EpisodeController.java b/backend/src/main/java/top/asimov/pigeon/controller/EpisodeController.java
+index 7a83e37..8427778 100644
+--- a/backend/src/main/java/top/asimov/pigeon/controller/EpisodeController.java
++++ b/backend/src/main/java/top/asimov/pigeon/controller/EpisodeController.java
+@@ -68,6 +68,18 @@ public class EpisodeController {
+     return SaResult.data(episodeService.deleteEpisodeById(id));
+   }
+ 
++  /** Capability probe for clients: only servers carrying the Individual Videos removal route answer it. */
++  @GetMapping("/individual/capability")
++  public SaResult individualRemovalCapability() {
++    return SaResult.data(java.util.Map.of("removeIndividual", 1));
++  }
++
++  @SaCheckRole("admin")
++  @DeleteMapping("/individual/{id}")
++  public SaResult removeIndividualVideoEpisode(@PathVariable String id) {
++    return SaResult.data(java.util.Map.of("result", episodeService.removeFromIndividualVideos(id)));
++  }
++
+   @SaCheckRole("admin")
+   @PostMapping("/retry/{id}")
+   public SaResult retryEpisode(@PathVariable String id) {
+diff --git a/backend/src/main/java/top/asimov/pigeon/mapper/EpisodeMapper.java b/backend/src/main/java/top/asimov/pigeon/mapper/EpisodeMapper.java
+index f23d541..d8efc01 100644
+--- a/backend/src/main/java/top/asimov/pigeon/mapper/EpisodeMapper.java
++++ b/backend/src/main/java/top/asimov/pigeon/mapper/EpisodeMapper.java
+@@ -168,4 +168,8 @@ public interface EpisodeMapper extends BaseMapper<Episode> {
+       + "WHERE e.download_status = #{status} "
+       + "ORDER BY e.created_at DESC")
+   Page<Episode> selectEpisodesByStatusWithFeedInfo(Page<Episode> page, @Param("status") String status);
++
++  /** Atomic delete that refuses a row the downloader has claimed (DOWNLOADING). */
++  @org.apache.ibatis.annotations.Delete("DELETE FROM episode WHERE id = #{id} AND download_status <> 'DOWNLOADING'")
++  int deleteIfNotDownloading(@Param("id") String id);
+ }
+diff --git a/backend/src/main/java/top/asimov/pigeon/mapper/PlaylistEpisodeMapper.java b/backend/src/main/java/top/asimov/pigeon/mapper/PlaylistEpisodeMapper.java
+index 96a0ded..d6b6f04 100644
+--- a/backend/src/main/java/top/asimov/pigeon/mapper/PlaylistEpisodeMapper.java
++++ b/backend/src/main/java/top/asimov/pigeon/mapper/PlaylistEpisodeMapper.java
+@@ -3,6 +3,7 @@ package top.asimov.pigeon.mapper;
+ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+ import java.time.LocalDateTime;
+ import java.util.List;
++import org.apache.ibatis.annotations.Delete;
+ import org.apache.ibatis.annotations.Insert;
+ import org.apache.ibatis.annotations.Param;
+ import org.apache.ibatis.annotations.Select;
+@@ -137,4 +138,7 @@ public interface PlaylistEpisodeMapper extends BaseMapper<PlaylistEpisode> {
+       @Param("sourceChannelId") String sourceChannelId,
+       @Param("sourceChannelName") String sourceChannelName,
+       @Param("sourceChannelUrl") String sourceChannelUrl);
++
++  @Delete("DELETE FROM playlist_episode WHERE playlist_id = #{playlistId} AND episode_id = #{episodeId}")
++  int deleteMapping(@Param("playlistId") String playlistId, @Param("episodeId") String episodeId);
+ }
+diff --git a/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java b/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
+index ce13d6f..48c323e 100644
+--- a/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
++++ b/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
+@@ -23,6 +23,8 @@ import org.springframework.context.MessageSource;
+ import org.springframework.context.i18n.LocaleContextHolder;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionSynchronization;
++import org.springframework.transaction.support.TransactionSynchronizationManager;
+ import org.springframework.util.StringUtils;
+ import top.asimov.pigeon.config.DownloadProperties;
+ import top.asimov.pigeon.config.StorageProperties;
+@@ -34,6 +36,7 @@ import top.asimov.pigeon.mapper.PlaylistEpisodeMapper;
+ import top.asimov.pigeon.mapper.PlaylistMapper;
+ import top.asimov.pigeon.model.entity.Channel;
+ import top.asimov.pigeon.model.entity.Episode;
++import top.asimov.pigeon.util.IndividualVideoPlaylistSupport;
+ import top.asimov.pigeon.model.entity.Feed;
+ import top.asimov.pigeon.model.entity.Playlist;
+ import top.asimov.pigeon.model.enums.EpisodeBatchAction;
+@@ -468,6 +471,69 @@ public class EpisodeService {
+     return episodeMapper.updateById(episode);
+   }
+ 
++  /**
++   * Removes one episode from the Individual Videos feed only, in one transaction.
++   * Unknown id: \"already_gone\" (the episode does not exist; says nothing about why). Not in this feed: 422, nothing touched (never 404, which a client reads as a missing route).
++   * Downloading: 409, nothing touched. PENDING is removed directly (no separate cancel).
++   * If another playlist or channel still uses the episode, only the feed link is removed.
++   * Otherwise the row is deleted atomically (refused if the downloader claimed it meanwhile),
++   * then its files are removed after the transaction commits.
++   */
++  @Transactional
++  public String removeFromIndividualVideos(String id) {
++    Episode episode = episodeMapper.selectById(id);
++    if (episode == null) {
++      return "already_gone";
++    }
++    String feedId = IndividualVideoPlaylistSupport.PLAYLIST_ID;
++    if (playlistEpisodeMapper.countByPlaylistAndEpisode(feedId, id) == 0) {
++      throw new BusinessException(422, "Episode is not in the Individual Videos feed");
++    }
++    if (EpisodeStatus.DOWNLOADING.name().equals(episode.getDownloadStatus())) {
++      throw new BusinessException(409, "Episode is downloading right now. Try again shortly.");
++    }
++    String mediaFilePath = episode.getMediaFilePath();
++    playlistEpisodeMapper.deleteMapping(feedId, id);
++    if (playlistEpisodeMapper.isOrhanEpisode(id) == 0) {
++      return "unlinked"; // still used elsewhere
++    }
++    if (episodeMapper.deleteIfNotDownloading(id) == 0) {
++      // downloader claimed it after our read: abort and roll back the unlink
++      throw new BusinessException(409, "Episode is downloading right now. Try again shortly.");
++    }
++    // Files go only after the database change has committed, so a failed commit can't leave
++    // rows pointing at deleted files. Outside a transaction (unit tests) it runs immediately.
++    Runnable cleanup = () -> deleteFilesAfterRowRemoval(id, mediaFilePath);
++    if (TransactionSynchronizationManager.isSynchronizationActive()) {
++      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
++        @Override
++        public void afterCommit() {
++          cleanup.run();
++        }
++      });
++    } else {
++      cleanup.run();
++    }
++    return "removed";
++  }
++
++  private void deleteFilesAfterRowRemoval(String id, String mediaFilePath) {
++    try {
++      if (isS3Mode()) {
++        deleteEpisodeAssetsByMediaPath(mediaFilePath);
++      } else if (StringUtils.hasText(mediaFilePath)) {
++        deleteSubtitleFiles(mediaFilePath);
++        deleteThumbnailFiles(mediaFilePath);
++        deleteChaptersFile(mediaFilePath, id);
++        Files.deleteIfExists(Paths.get(mediaFilePath));
++      }
++    } catch (Exception e) {
++      // the row is already gone; a leftover file is logged, never shown as a failure
++      log.error("[storage] file delete failed after row delete: episodeId={} filePath={}",
++          id, mediaFilePath, e);
++    }
++  }
++
+   @Transactional
+   public int deleteEpisodeCompletelyById(String id) {
+     Episode episode = episodeMapper.selectById(id);
+diff --git a/backend/src/test/java/top/asimov/pigeon/service/EpisodeServiceIndividualRemovalRealDbTest.java b/backend/src/test/java/top/asimov/pigeon/service/EpisodeServiceIndividualRemovalRealDbTest.java
+new file mode 100644
+index 0000000..c3b9bbb
+--- /dev/null
++++ b/backend/src/test/java/top/asimov/pigeon/service/EpisodeServiceIndividualRemovalRealDbTest.java
+@@ -0,0 +1,190 @@
++package top.asimov.pigeon.service;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++
++import com.baomidou.mybatisplus.core.MybatisConfiguration;
++import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.sql.Connection;
++import java.sql.ResultSet;
++import java.sql.Statement;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Map;
++import org.apache.ibatis.session.SqlSessionFactory;
++import org.flywaydb.core.Flyway;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++import org.mockito.Mockito;
++import org.mybatis.spring.SqlSessionTemplate;
++import org.mybatis.spring.mapper.MapperFactoryBean;
++import org.springframework.jdbc.datasource.DataSourceTransactionManager;
++import org.springframework.transaction.support.TransactionTemplate;
++import org.sqlite.SQLiteDataSource;
++import top.asimov.pigeon.config.DownloadProperties;
++import top.asimov.pigeon.config.StorageProperties;
++import top.asimov.pigeon.exception.BusinessException;
++import top.asimov.pigeon.mapper.ChannelMapper;
++import top.asimov.pigeon.mapper.EpisodeMapper;
++import top.asimov.pigeon.mapper.PlaylistEpisodeMapper;
++import top.asimov.pigeon.mapper.PlaylistMapper;
++import top.asimov.pigeon.service.storage.S3StorageService;
++
++/**
++ * Real-database proof (temp SQLite, the shipped Flyway migrations, real MyBatis mappers) for the
++ * Individual Videos removal. Transactions use Spring's TransactionTemplate over the same
++ * DataSourceTransactionManager rule as @Transactional (rollback on RuntimeException).
++ * No mocks for episode / playlist_episode. Synthetic rows only.
++ */
++class EpisodeServiceIndividualRemovalRealDbTest {
++  private static final String FEED = "individual-videos-youtube";
++  @TempDir Path dir;
++  SQLiteDataSource ds;
++  EpisodeService svc;
++  TransactionTemplate tx;
++  EpisodeMapper episodes;
++  PlaylistEpisodeMapper links;
++
++  private <T> T mapper(SqlSessionFactory f, Class<T> c) throws Exception {
++    MapperFactoryBean<T> b = new MapperFactoryBean<>(c);
++    b.setSqlSessionTemplate(new SqlSessionTemplate(f));
++    b.afterPropertiesSet();
++    return b.getObject();
++  }
++
++  @BeforeEach
++  void setUp() throws Exception {
++    ds = new SQLiteDataSource();
++    ds.setUrl("jdbc:sqlite:" + dir.resolve("t.db"));
++    Flyway.configure().dataSource(ds).locations("classpath:db/migration").load().migrate();
++    MybatisSqlSessionFactoryBean fb = new MybatisSqlSessionFactoryBean();
++    fb.setDataSource(ds);
++    fb.setConfiguration(new MybatisConfiguration());
++    SqlSessionFactory f = fb.getObject();
++    f.getConfiguration().addMapper(EpisodeMapper.class);
++    f.getConfiguration().addMapper(PlaylistEpisodeMapper.class);
++    episodes = mapper(f, EpisodeMapper.class);
++    links = mapper(f, PlaylistEpisodeMapper.class);
++    StorageProperties sp = Mockito.mock(StorageProperties.class);
++    Mockito.when(sp.isS3Mode()).thenReturn(false);
++    svc = new EpisodeService(episodes, Mockito.mock(org.springframework.context.ApplicationEventPublisher.class),
++        Mockito.mock(org.springframework.context.MessageSource.class), Mockito.mock(ChannelMapper.class), links,
++        Mockito.mock(PlaylistMapper.class), sp, Mockito.mock(S3StorageService.class),
++        Mockito.mock(DownloadProperties.class));
++    tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
++    exec("PRAGMA foreign_keys=OFF");
++  }
++
++  void exec(String sql) throws Exception {
++    try (Connection c = ds.getConnection(); Statement s = c.createStatement()) { s.execute(sql); }
++  }
++
++  /** Insert a synthetic row, filling every other NOT NULL column without a default. */
++  void insert(String table, Map<String, String> v) throws Exception {
++    try (Connection c = ds.getConnection(); Statement s = c.createStatement()) {
++      List<String> cols = new ArrayList<>(); List<String> vals = new ArrayList<>();
++      try (ResultSet r = s.executeQuery("PRAGMA table_info(" + table + ")")) {
++        while (r.next()) {
++          String n = r.getString("name"); String t = r.getString("type").toUpperCase();
++          if (v.containsKey(n)) { cols.add(n); vals.add(v.get(n) == null ? "NULL" : "'" + v.get(n) + "'"); }
++          else if (r.getInt("notnull") == 1 && r.getString("dflt_value") == null) {
++            cols.add(n);
++            vals.add(t.contains("INT") || t.contains("REAL") ? "0" : t.contains("TIMESTAMP") ? "CURRENT_TIMESTAMP" : "'x'");
++          }
++        }
++      }
++      s.execute("INSERT INTO " + table + "(" + String.join(",", cols) + ") VALUES(" + String.join(",", vals) + ")");
++    }
++  }
++
++  long count(String sql) throws Exception {
++    try (Connection c = ds.getConnection(); Statement s = c.createStatement(); ResultSet r = s.executeQuery(sql)) {
++      r.next(); return r.getLong(1);
++    }
++  }
++
++  void feedEpisode(String id, String channelId, String status, String file) throws Exception {
++    insert("episode", Map.of("id", id, "channel_id", channelId == null ? "" : channelId,
++        "download_status", status, "media_file_path", file));
++    insert("playlist_episode", Map.of("playlist_id", FEED, "episode_id", id));
++  }
++
++  @Test
++  void channelOwnedEpisodeInFeedIsOnlyUnlinkedRowAndFileKept() throws Exception {
++    insert("channel", Map.of("id", "ch1"));
++    Path f = dir.resolve("a.mp4"); Files.writeString(f, "x");
++    feedEpisode("e1", "ch1", "COMPLETED", f.toString());
++    assertEquals("unlinked", tx.execute(s -> svc.removeFromIndividualVideos("e1")));
++    assertEquals(1, count("select count(*) from episode where id='e1'"));
++    assertEquals(0, count("select count(*) from playlist_episode where episode_id='e1'"));
++    assertTrue(Files.exists(f));
++  }
++
++  @Test
++  void episodeAlsoInAnotherPlaylistIsOnlyUnlinked() throws Exception {
++    Path f = dir.resolve("b.mp4"); Files.writeString(f, "x");
++    feedEpisode("e2", null, "COMPLETED", f.toString());
++    insert("playlist_episode", Map.of("playlist_id", "other", "episode_id", "e2"));
++    assertEquals("unlinked", tx.execute(s -> svc.removeFromIndividualVideos("e2")));
++    assertEquals(1, count("select count(*) from episode where id='e2'"));
++    assertEquals(1, count("select count(*) from playlist_episode where episode_id='e2'"));
++    assertTrue(Files.exists(f));
++  }
++
++  @Test
++  void orphanedCompletedEpisodeIsRemovedWithItsFile() throws Exception {
++    Path f = dir.resolve("c.mp4"); Files.writeString(f, "x");
++    feedEpisode("e3", null, "COMPLETED", f.toString());
++    assertEquals("removed", tx.execute(s -> svc.removeFromIndividualVideos("e3")));
++    assertEquals(0, count("select count(*) from episode where id='e3'"));
++    assertEquals(0, count("select count(*) from playlist_episode where episode_id='e3'"));
++    assertFalse(Files.exists(f));
++  }
++
++  @Test
++  void downloadingIs409AndNothingChanges() throws Exception {
++    feedEpisode("e4", null, "DOWNLOADING", dir.resolve("d.mp4").toString());
++    BusinessException ex = assertThrows(BusinessException.class, () -> tx.execute(s -> svc.removeFromIndividualVideos("e4")));
++    assertEquals(409, ex.getCode());
++    assertEquals(1, count("select count(*) from episode where id='e4'"));
++    assertEquals(1, count("select count(*) from playlist_episode where episode_id='e4'"));
++  }
++
++  @Test
++  void downloaderClaimAfterUnlinkRollsTheUnlinkBack() throws Exception {
++    // The downloader marks the row DOWNLOADING between the service's read and its atomic delete:
++    // simulate by claiming inside the same transaction right after the unlink, via a mapper wrapper.
++    feedEpisode("e5", null, "PENDING", dir.resolve("e.mp4").toString());
++    PlaylistEpisodeMapper racing = Mockito.spy(links);
++    Mockito.doAnswer(inv -> { int r = links.deleteMapping(inv.getArgument(0), inv.getArgument(1));
++      // same transaction connection (SQLite single writer): the downloader's claim lands before our delete
++      Connection tc = org.springframework.jdbc.datasource.DataSourceUtils.getConnection(ds);
++      try (Statement st = tc.createStatement()) { st.execute("UPDATE episode SET download_status='DOWNLOADING' WHERE id='e5'"); }
++      catch (java.sql.SQLException e) { throw new IllegalStateException(e); }
++      return r; })
++        .when(racing).deleteMapping(Mockito.anyString(), Mockito.anyString());
++    StorageProperties sp = Mockito.mock(StorageProperties.class);
++    EpisodeService racy = new EpisodeService(episodes, Mockito.mock(org.springframework.context.ApplicationEventPublisher.class),
++        Mockito.mock(org.springframework.context.MessageSource.class), Mockito.mock(ChannelMapper.class), racing,
++        Mockito.mock(PlaylistMapper.class), sp, Mockito.mock(S3StorageService.class), Mockito.mock(DownloadProperties.class));
++    BusinessException ex = assertThrows(BusinessException.class, () -> tx.execute(s -> racy.removeFromIndividualVideos("e5")));
++    assertEquals(409, ex.getCode());
++    assertEquals(1, count("select count(*) from episode where id='e5'"));
++    assertEquals(1, count("select count(*) from playlist_episode where playlist_id='" + FEED + "' and episode_id='e5'"),
++        "unlink must be rolled back with the 409");
++  }
++
++  @Test
++  void notInFeedIs422AndUnknownIsIdempotent() throws Exception {
++    insert("episode", Map.of("id", "e6", "channel_id", "", "download_status", "COMPLETED"));
++    BusinessException ex = assertThrows(BusinessException.class, () -> tx.execute(s -> svc.removeFromIndividualVideos("e6")));
++    assertEquals(422, ex.getCode());
++    assertEquals(1, count("select count(*) from episode where id='e6'"));
++    assertEquals("already_gone", tx.execute(s -> svc.removeFromIndividualVideos("nope")));
++  }
++}
+diff --git a/backend/src/test/java/top/asimov/pigeon/service/EpisodeServiceIndividualRemovalTest.java b/backend/src/test/java/top/asimov/pigeon/service/EpisodeServiceIndividualRemovalTest.java
+new file mode 100644
+index 0000000..cb3df5c
+--- /dev/null
++++ b/backend/src/test/java/top/asimov/pigeon/service/EpisodeServiceIndividualRemovalTest.java
+@@ -0,0 +1,161 @@
++package top.asimov.pigeon.service;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.mockito.ArgumentMatchers.anyString;
++import static org.mockito.Mockito.never;
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.when;
++
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.extension.ExtendWith;
++import org.junit.jupiter.api.io.TempDir;
++import org.mockito.Mock;
++import org.mockito.junit.jupiter.MockitoExtension;
++import org.springframework.context.ApplicationEventPublisher;
++import org.springframework.context.MessageSource;
++import top.asimov.pigeon.config.DownloadProperties;
++import top.asimov.pigeon.config.StorageProperties;
++import top.asimov.pigeon.exception.BusinessException;
++import top.asimov.pigeon.model.entity.Episode;
++import top.asimov.pigeon.mapper.ChannelMapper;
++import top.asimov.pigeon.mapper.EpisodeMapper;
++import top.asimov.pigeon.mapper.PlaylistEpisodeMapper;
++import top.asimov.pigeon.mapper.PlaylistMapper;
++import top.asimov.pigeon.service.storage.S3StorageService;
++
++@ExtendWith(MockitoExtension.class)
++class EpisodeServiceIndividualRemovalTest {
++
++  @Mock
++  private EpisodeMapper episodeMapper;
++
++  @Mock
++  private ApplicationEventPublisher eventPublisher;
++
++  @Mock
++  private MessageSource messageSource;
++
++  @Mock
++  private ChannelMapper channelMapper;
++
++  @Mock
++  private PlaylistEpisodeMapper playlistEpisodeMapper;
++
++  @Mock
++  private PlaylistMapper playlistMapper;
++
++  @Mock
++  private StorageProperties storageProperties;
++
++  @Mock
++  private S3StorageService s3StorageService;
++
++  @Mock
++  private DownloadProperties downloadProperties;
++
++  private EpisodeService episodeService;
++
++  @TempDir
++  Path tempDir;
++
++  @BeforeEach
++  void setUp() {
++    org.mockito.Mockito.lenient().when(storageProperties.isS3Mode()).thenReturn(false);
++    episodeService = new EpisodeService(
++        episodeMapper,
++        eventPublisher,
++        messageSource,
++        channelMapper,
++        playlistEpisodeMapper,
++        playlistMapper,
++        storageProperties,
++        s3StorageService,
++        downloadProperties
++    );
++  }
++
++  private static final String FEED = "individual-videos-youtube";
++
++  private Episode episode(String id, String status, String path) {
++    Episode e = new Episode();
++    e.setId(id);
++    e.setDownloadStatus(status);
++    e.setMediaFilePath(path);
++    return e;
++  }
++
++  @Test
++  void unknownIdIsIdempotentAndTouchesNothing() {
++    when(episodeMapper.selectById("x")).thenReturn(null);
++    assertEquals("already_gone", episodeService.removeFromIndividualVideos("x"));
++    verify(playlistEpisodeMapper, never()).deleteMapping(anyString(), anyString());
++    verify(episodeMapper, never()).deleteIfNotDownloading(anyString());
++  }
++
++  @Test
++  void episodeOutsideIndividualVideosIs422AndUntouched() {
++    when(episodeMapper.selectById("a")).thenReturn(episode("a", "COMPLETED", null));
++    when(playlistEpisodeMapper.countByPlaylistAndEpisode(FEED, "a")).thenReturn(0);
++    BusinessException ex = assertThrows(BusinessException.class,
++        () -> episodeService.removeFromIndividualVideos("a"));
++    assertEquals(Integer.valueOf(422), Integer.valueOf(ex.getCode()));
++    verify(playlistEpisodeMapper, never()).deleteMapping(anyString(), anyString());
++  }
++
++  @Test
++  void downloadingIs409AndUntouched() {
++    when(episodeMapper.selectById("a")).thenReturn(episode("a", "DOWNLOADING", null));
++    when(playlistEpisodeMapper.countByPlaylistAndEpisode(FEED, "a")).thenReturn(1);
++    BusinessException ex = assertThrows(BusinessException.class,
++        () -> episodeService.removeFromIndividualVideos("a"));
++    assertEquals(Integer.valueOf(409), Integer.valueOf(ex.getCode()));
++    verify(playlistEpisodeMapper, never()).deleteMapping(anyString(), anyString());
++  }
++
++  @Test
++  void downloaderClaimsRowAfterReadIs409() {
++    when(episodeMapper.selectById("a")).thenReturn(episode("a", "PENDING", null));
++    when(playlistEpisodeMapper.countByPlaylistAndEpisode(FEED, "a")).thenReturn(1);
++    when(playlistEpisodeMapper.isOrhanEpisode("a")).thenReturn(1L);
++    when(episodeMapper.deleteIfNotDownloading("a")).thenReturn(0);
++    BusinessException ex = assertThrows(BusinessException.class,
++        () -> episodeService.removeFromIndividualVideos("a"));
++    assertEquals(Integer.valueOf(409), Integer.valueOf(ex.getCode()));
++  }
++
++  @Test
++  void sharedEpisodeOnlyUnlinks() throws IOException {
++    Path media = tempDir.resolve("media.mp4");
++    Files.createFile(media);
++    when(episodeMapper.selectById("a")).thenReturn(episode("a", "COMPLETED", media.toString()));
++    when(playlistEpisodeMapper.countByPlaylistAndEpisode(FEED, "a")).thenReturn(1);
++    when(playlistEpisodeMapper.isOrhanEpisode("a")).thenReturn(0L);
++    assertEquals("unlinked", episodeService.removeFromIndividualVideos("a"));
++    verify(playlistEpisodeMapper).deleteMapping(FEED, "a");
++    verify(episodeMapper, never()).deleteIfNotDownloading(anyString());
++    assertTrue(Files.exists(media));
++  }
++
++  @Test
++  void orphanedCompletedEpisodeRemovesRowThenFiles() throws IOException {
++    Path media = tempDir.resolve("media.mp4");
++    Files.createFile(media);
++    Path thumb = tempDir.resolve("media.jpg");
++    Files.createFile(thumb);
++    when(episodeMapper.selectById("a")).thenReturn(episode("a", "COMPLETED", media.toString()));
++    when(playlistEpisodeMapper.countByPlaylistAndEpisode(FEED, "a")).thenReturn(1);
++    when(playlistEpisodeMapper.isOrhanEpisode("a")).thenReturn(1L);
++    when(episodeMapper.deleteIfNotDownloading("a")).thenReturn(1);
++    assertEquals("removed", episodeService.removeFromIndividualVideos("a"));
++    verify(playlistEpisodeMapper).deleteMapping(FEED, "a");
++    assertFalse(Files.exists(media));
++    assertFalse(Files.exists(thumb));
++  }
++}
+diff --git a/backend/src/test/java/top/asimov/pigeon/service/IndividualRemovalSqlTest.java b/backend/src/test/java/top/asimov/pigeon/service/IndividualRemovalSqlTest.java
+new file mode 100644
+index 0000000..77a44ed
+--- /dev/null
++++ b/backend/src/test/java/top/asimov/pigeon/service/IndividualRemovalSqlTest.java
+@@ -0,0 +1,119 @@
++package top.asimov.pigeon.service;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertNotNull;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++import java.sql.Connection;
++import java.sql.DriverManager;
++import java.sql.PreparedStatement;
++import java.sql.ResultSet;
++import java.sql.Statement;
++import org.apache.ibatis.annotations.Delete;
++import org.apache.ibatis.annotations.Select;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.transaction.annotation.Transactional;
++import top.asimov.pigeon.exception.BusinessException;
++import top.asimov.pigeon.mapper.EpisodeMapper;
++import top.asimov.pigeon.mapper.PlaylistEpisodeMapper;
++
++/**
++ * Runs the real SQL strings of the removal mappers against a real SQLite database (the same driver
++ * the app uses), so channel-owned and shared episodes are decided by actual rows, not mocks.
++ */
++class IndividualRemovalSqlTest {
++
++  private Connection db;
++
++  @BeforeEach
++  void open() throws Exception {
++    db = DriverManager.getConnection("jdbc:sqlite::memory:");
++    try (Statement st = db.createStatement()) {
++      st.execute("CREATE TABLE channel (id TEXT PRIMARY KEY)");
++      st.execute("CREATE TABLE episode (id TEXT PRIMARY KEY, channel_id TEXT, download_status TEXT)");
++      st.execute("CREATE TABLE playlist_episode (playlist_id TEXT, episode_id TEXT)");
++      st.execute("INSERT INTO channel VALUES ('ch1')");
++    }
++  }
++
++  @AfterEach
++  void close() throws Exception { db.close(); }
++
++  private void exec(String sql) throws Exception {
++    try (Statement st = db.createStatement()) { st.execute(sql); }
++  }
++
++  private String sql(Class<?> mapper, String method) throws Exception {
++    for (var m : mapper.getMethods()) {
++      if (m.getName().equals(method)) {
++        Select s = m.getAnnotation(Select.class);
++        if (s != null) return String.join("", s.value()).replace("#{episodeId}", "?");
++        Delete d = m.getAnnotation(Delete.class);
++        assertNotNull(d);
++        return String.join("", d.value()).replace("#{id}", "?");
++      }
++    }
++    throw new AssertionError("no method " + method);
++  }
++
++  private long orphan(String id) throws Exception {
++    try (PreparedStatement ps = db.prepareStatement(sql(PlaylistEpisodeMapper.class, "isOrhanEpisode"))) {
++      ps.setString(1, id);
++      try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getLong(1); }
++    }
++  }
++
++  private int deleteIfNotDownloading(String id) throws Exception {
++    try (PreparedStatement ps = db.prepareStatement(sql(EpisodeMapper.class, "deleteIfNotDownloading"))) {
++      ps.setString(1, id);
++      return ps.executeUpdate();
++    }
++  }
++
++  @Test
++  void plainIndividualVideoIsAnOrphanOnceUnlinked() throws Exception {
++    exec("INSERT INTO episode VALUES ('a', NULL, 'COMPLETED')");
++    assertEquals(1, orphan("a"));
++  }
++
++  @Test
++  void channelOwnedEpisodeIsNeverAnOrphanEvenWhenOnlyInTheIndividualFeed() throws Exception {
++    exec("INSERT INTO episode VALUES ('c', 'ch1', 'COMPLETED')");
++    assertEquals(0, orphan("c"));
++  }
++
++  @Test
++  void episodeOfADeletedChannelCountsAsOrphan() throws Exception {
++    exec("INSERT INTO episode VALUES ('d', 'gone', 'COMPLETED')");
++    assertEquals(1, orphan("d"));
++  }
++
++  @Test
++  void episodeStillInAnotherPlaylistIsNotAnOrphan() throws Exception {
++    exec("INSERT INTO episode VALUES ('p', NULL, 'COMPLETED')");
++    exec("INSERT INTO playlist_episode VALUES ('other', 'p')");
++    assertEquals(0, orphan("p"));
++  }
++
++  @Test
++  void guardedDeleteRefusesADownloadingRowAndDeletesOthers() throws Exception {
++    exec("INSERT INTO episode VALUES ('x', NULL, 'DOWNLOADING')");
++    exec("INSERT INTO episode VALUES ('y', NULL, 'READY')");
++    assertEquals(0, deleteIfNotDownloading("x"));
++    assertEquals(1, deleteIfNotDownloading("y"));
++  }
++
++  @Test
++  void aRefusedRemovalRollsTheUnlinkBack() throws Exception {
++    // The service throws BusinessException (a RuntimeException) from a @Transactional method with
++    // no noRollbackFor, so Spring's default rule rolls the unlink back.
++    assertTrue(RuntimeException.class.isAssignableFrom(BusinessException.class));
++    Transactional t = EpisodeService.class
++        .getMethod("removeFromIndividualVideos", String.class).getAnnotation(Transactional.class);
++    assertNotNull(t);
++    assertEquals(0, t.noRollbackFor().length);
++    assertEquals(0, t.noRollbackForClassName().length);
++  }
++}
