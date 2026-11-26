@@ -15,7 +15,7 @@ trap 'adb shell wm size reset; adb shell wm density reset; adb shell settings pu
 adb shell pm list instrumentation | tee $OUT/instrumentation-list.txt
 
 # Lanes: size/density (dp width) x font scale. 1440x2807 @649 dpi is 355 dp wide (the narrow, <400 dp
-# branch); 1080x2400 @420 dpi is 411 dp. Each lane runs the same zero-tolerance test.
+# branch), 1080x2340 @440 dpi is 392 dp (the producer narrow lane); 1080x2400 @420 dpi is 411 dp (>= 400 dp). Each lane runs the same zero-tolerance test.
 run_lane() { # name size density fontscale
   adb shell wm size "$2"; adb shell wm density "$3"; adb shell settings put system font_scale "$4"
   sleep 2
@@ -29,6 +29,7 @@ run_lane() { # name size density fontscale
 }
 run_lane narrow-355dp-font1.0 1440x2807 649 1.0
 run_lane narrow-355dp-font1.3 1440x2807 649 1.3
+run_lane narrow-392dp-font1.3 1080x2340 440 1.3
 run_lane wide-411dp-font1.0 1080x2400 420 1.0
 run_lane wide-411dp-font1.3 1080x2400 420 1.3
 
@@ -39,7 +40,7 @@ adb shell am force-stop com.listenlater
 adb shell am start -n com.listenlater/.MainActivity --ez demo true
 sleep 12
 adb shell dumpsys window | grep -E 'mCurrentFocus' | tee $OUT/focus-before-record.txt | grep -q com.listenlater || { echo "the app is not in the foreground"; exit 1; }
-adb shell screenrecord --bit-rate 8000000 --time-limit 20 /sdcard/switch.mp4 &
+adb shell screenrecord --bit-rate 8000000 --time-limit 45 /sdcard/switch.mp4 &
 REC=$!
 sleep 2
 tap() {
