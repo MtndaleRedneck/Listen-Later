@@ -90,8 +90,8 @@ The add-on is optional. Everything else in the app works without it.
 - What it does: removes the video from the Individual Videos feed and deletes its files, unless
   it is downloading right now ("Still downloading. Try again shortly."). It can't be undone.
   Sharing the link again adds it fresh. Episodes your podcast app already downloaded are not touched.
-- Status: the server tests in the patch pass in a clean checkout. The full image build and an
-  end-to-end check on a clean install are listed here once done.
+- Status: described, not yet verified on a clean install. This line is updated once the build
+  and an end-to-end check have been run.
 
 Videos still waiting to send, or under "Couldn't get it", are removed from the list on the
 phone only; nothing is sent to the server for them.
