@@ -19,19 +19,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check out the packaged candidate (server/ as shipped)
         uses: actions/checkout@v4
-        with: { ref: 6e3c5d4a6fce6a2316e7376823e44eee93d0a37f, path: cand }
+        with: { ref: 08f2c8a7f78f21270a35f93c68fe7d63428d45b8, path: cand }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - name: Prepare tree
         run: ./cand/server/fixture/prepare.sh ${{ matrix.variant }}
-      - name: Server tests (mvn test)
+      - name: Server tests and image (packaged build.sh)
         shell: bash
-        run: |
-          set -o pipefail
-          cd pp
-          mvn -B -f backend/pom.xml test 2>&1 | tee ../mvn-${{ matrix.variant }}.log | grep -E 'Tests run:|BUILD|ERROR' | tail -40
-      - name: Build image (repo Dockerfile)
-        run: cd pp && docker build -t pp-fixture:${{ matrix.variant }} .
+        run: set -o pipefail; ./cand/server/fixture/build.sh ${{ matrix.variant }} 2>&1 | tee mvn-${{ matrix.variant }}.log | grep -E 'Tests run:|BUILD|ERROR|Successfully' | tail -40
       - name: Run fixture
         run: ./cand/server/fixture/run-fixture.sh ${{ matrix.variant }}
       - uses: actions/upload-artifact@v4
