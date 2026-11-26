@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check out the packaged candidate (server/ as shipped)
         uses: actions/checkout@v4
-        with: { ref: 345425765de2ddf5505b2c377b9b224fb23267a3, path: cand }
+        with: { ref: ee28b72f3545faf5229b81f23441fd291d1234d8, path: cand }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - name: Prepare tree
