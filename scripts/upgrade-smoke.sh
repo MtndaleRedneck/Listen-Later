@@ -83,8 +83,34 @@ answer_external_anr() {
     echo "stopping the hung system launcher (not the app) so the dialog does not return"
     adb shell am force-stop com.google.android.apps.nexuslauncher
     sleep 3
+    # Reviewer-requested additive step: HOME is sent only when a real focused window exists (never into a
+    # window-less launcher), once per stop; the existing relaunch by the caller follows unchanged.
+    wait_for_focus after-launcher-stop 30
+    if [ "$FOCUS_READY" = 1 ]; then adb shell input keyevent KEYCODE_HOME; sleep 2; fi
   fi
   return 0   # answering (or finding nothing to answer) is normal, never a failure
+}
+
+# Positive focus readiness (test script only; no assertion changes). Polls WITHOUT injecting any input until the
+# window manager reports a real focused window that is not a system "Application Not Responding" window. Run
+# 45774584463 ended with mCurrentFocus=null / mFocusedApp=NexusLauncherActivity and then the launcher's ANR window.
+# Host-side grep only (the pipe is outside adb, which does not run a shell). Logs the focus lines every round.
+# Always returns 0 after the cap: a cap hit is logged and the existing checks below still decide; it never passes anything.
+# $1 = label, $2 = cap in seconds. Sets FOCUS_READY=1 when a valid focused window was seen.
+wait_for_focus() {
+  local LABEL=$1 CAP=$2 T=0 F
+  FOCUS_READY=0
+  while [ "$T" -lt "$CAP" ]; do
+    F=$(adb shell dumpsys window 2>&1 | grep -m3 -E "mCurrentFocus|mFocusedApp")
+    echo "FOCUS[$LABEL t=${T}s]: $(echo "$F" | tr -s ' ' | tr '\n' ' ')"
+    case "$F" in
+      *"mCurrentFocus=Window{"*"Application Not Responding"*) ;;
+      *"mCurrentFocus=Window{"*) FOCUS_READY=1; return 0;;
+    esac
+    sleep 2; T=$((T + 2))
+  done
+  echo "FOCUS NOT READY ($LABEL) after ${CAP}s: continuing into the existing checks"
+  return 0
 }
 
 # Own-app failure evidence by process and logcat (not by dialog language). Sets APP_FAIL to the
@@ -144,6 +170,7 @@ run_one() {
   # long ago, and grants survive install -r.
   adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS
 
+  wait_for_focus before-seed-$OLD_TAG 90
   adb logcat -c
   # Queue a share on the old version with no session (unique valid-shaped id).
   SMOKE_ID="upg$(date +%s%N | tail -c 9)"
