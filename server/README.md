@@ -55,3 +55,9 @@ non-admin account, channel-owned videos, or files on disk; unit tests cover the 
 - The fence adds migration `V58__Add_auth_version_to_user.sql`. If a later PigeonPod release adds
   its own V58, Flyway will refuse to start: renumber the file after re-applying.
 - With Redis stopped, requests wait about a minute before the 503, because no Redis timeout is set.
+
+## Known limits inherited from PigeonPod
+
+These come from PigeonPod's own download and cleanup code, which the delete patch reuses and does not change.
+- Cleaning up files after a delete removes subtitle and thumbnail files in the same folder whose names start with the video's file name plus a dot. A different video whose title starts with this one's title followed by a dot (for example "Title" and "Title.Remix") can lose its subtitle or thumbnail when the first is deleted. Its media file is not touched. PigeonPod's own "delete" for channels and playlists does the same.
+- If a delete lands in the instant a download is starting (after the download read the row, before it marks it as downloading), the download can still write its files for a video that no longer exists. No entry comes back; the leftover files stay in the folder. PigeonPod's own delete has the same gap.
