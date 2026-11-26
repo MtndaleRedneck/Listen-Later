@@ -90,11 +90,38 @@ The add-on is optional. Everything else in the app works without it.
 - What it does: removes the video from the Individual Videos feed and deletes its files, unless
   it is downloading right now ("Still downloading. Try again shortly."). It can't be undone.
   Sharing the link again adds it fresh. Episodes your podcast app already downloaded are not touched.
-- Status: described, not yet verified on a clean install. This line is updated once the build
-  and an end-to-end check have been run.
+- Status: the patch compiles and its tests pass (full server test suite, including tests that run
+  against a real SQLite database with the shipped migrations: channel-owned and shared videos are
+  only unlinked, a download starting mid-delete gives "Still downloading" and changes nothing).
+  That was run on PigeonPod v1.31.0 with the two optional changes below applied first. A running
+  server with a real client has not been end-to-end tested yet.
 
 Videos still waiting to send, or under "Couldn't get it", are removed from the list on the
 phone only; nothing is sent to the server for them.
+
+## Optional: staying signed in across server restarts (Described, not tested on a clean install)
+
+These two changes are independent of full delete and optional. Without them PigeonPod keeps
+sign-ins in memory, so every server restart signs you out; Listen Later then asks you to sign in
+again and keeps shared videos waiting meanwhile. Both are source patches against PigeonPod v1.31.0
+(commit b6e1a49), applied in this order: first the Redis session patch at the repository root
+(`git apply -p1`), then the sign-in fence patch inside `backend/` (`git apply -p1`), then, if
+wanted, the full delete patch above.
+
+- Redis sessions: upgrades Sa-Token from 1.44.0 to 1.46.0, adds the Redis session store, and
+  answers HTTP 503 (not 401) when Redis is down, so Listen Later keeps your sign-in and retries.
+- Sign-in fence: adds an `auth_version` column (a database migration that can't be undone) so a
+  password change signs out older sessions.
+- Setup: run Redis on an internal network with no published port, a password you generate, and
+  `appendonly yes`. Give the app the standard Spring Boot settings `SPRING_DATA_REDIS_HOST`,
+  `SPRING_DATA_REDIS_PORT`, `SPRING_DATA_REDIS_USERNAME` and `SPRING_DATA_REDIS_PASSWORD`
+  (names not yet verified against a clean install). Never commit the values.
+- Check on a clean setup before relying on it: sign in, restart only the app and confirm you are
+  still signed in; stop Redis and confirm a 503; change the password and confirm the old session
+  is refused.
+- Update and rollback: back up your database and keep the previous image and compose file. The
+  image build skips tests, so run `mvn test` separately. Going back to a stock image returns to
+  in-memory sign-ins; the extra column is harmless.
 
 ## If a video hasn't arrived
 
