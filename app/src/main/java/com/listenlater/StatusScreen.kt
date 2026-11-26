@@ -103,6 +103,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.ui.draw.alpha
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -526,6 +528,10 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
     fun confirmDelete(target: DeleteTarget) {
         when (target) {
             is DeleteTarget.OnServer -> {
+                if (Demo.active) { // debug demo only: no server behind it
+                    episodes = episodes.filter { it.id != target.id }
+                    return
+                }
                 val server = store.server ?: return
                 val token = store.token ?: return
                 deletingKey = target.id
@@ -534,7 +540,11 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                         val r = withContext(Dispatchers.IO) { Api(server, token).removeIndividual(target.id) }
                         Notifier.toast(
                             context,
-                            if (r == Api.RemoveResult.ALREADY_GONE) "That video was already gone." else "Deleted."
+                            when (r) {
+                                Api.RemoveResult.REMOVED -> "Deleted."
+                                Api.RemoveResult.UNLINKED -> "Removed from this list. It's still used elsewhere on the server."
+                                Api.RemoveResult.ALREADY_GONE -> "That video was already gone."
+                            }
                         )
                     } catch (e: Api.SessionExpired) {
                         deletingKey = null
@@ -556,7 +566,12 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                 scope.launch {
                     // The worker holds this lock for a whole send, so wait for it: either the share is
                     // still queued and we remove it, or it just reached the server and needs a server delete.
-                    val removed = QueueLock.removeLocal(queueStore, target.url)
+                    val removed = withTimeoutOrNull(8_000) { QueueLock.removeLocal(queueStore, target.url) }
+                    if (removed == null) {
+                        deletingKey = null
+                        Notifier.toast(context, "Still sending. Try again in a moment.")
+                        return@launch
+                    }
                     if (removed) { Notifier.clearRedirectNotice(context, target.url); Notifier.cancelSkipped(context, target.url) }
                     queued = queueStore.shareQueue()
                     deletingKey = null
@@ -570,7 +585,12 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
             is DeleteTarget.Parked -> {
                 deletingKey = target.url
                 scope.launch {
-                    val removed = QueueLock.removeLocal(queueStore, target.url)
+                    val removed = withTimeoutOrNull(8_000) { QueueLock.removeLocal(queueStore, target.url) }
+                    if (removed == null) {
+                        deletingKey = null
+                        Notifier.toast(context, "Still sending. Try again in a moment.")
+                        return@launch
+                    }
                     if (removed) Notifier.cancelSkipped(context, target.url)
                     skipped = queueStore.skipped()
                     queued = queueStore.shareQueue()
@@ -655,7 +675,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             val id = VideoUrl.extractVideoId(q.url)
                             val now = System.currentTimeMillis()
                             Row(
-                                modifier = Modifier.fillMaxWidth().deleteOnLongPress { if (deletingKey == null) deleteAsk = DeleteTarget.Waiting(q.url, q.title.ifEmpty { "Video waiting to send" }) }.padding(vertical = 12.dp),
+                                modifier = Modifier.fillMaxWidth().alpha(if (deletingKey == q.url) 0.45f else 1f).deleteOnLongPress { if (deletingKey == null) deleteAsk = DeleteTarget.Waiting(q.url, q.title.ifEmpty { "Video waiting to send" }) }.padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -689,7 +709,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             if (!firstRow) RowDivider()
                             firstRow = false
                             Row(
-                                modifier = Modifier.fillMaxWidth().deleteOnLongPress { if (deletingKey == null) deleteAsk = DeleteTarget.Parked(sk.url, sk.title.ifEmpty { "Video ${VideoUrl.extractVideoId(sk.url) ?: "link"}" }) }.padding(vertical = 12.dp),
+                                modifier = Modifier.fillMaxWidth().alpha(if (deletingKey == sk.url) 0.45f else 1f).deleteOnLongPress { if (deletingKey == null) deleteAsk = DeleteTarget.Parked(sk.url, sk.title.ifEmpty { "Video ${VideoUrl.extractVideoId(sk.url) ?: "link"}" }) }.padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -726,7 +746,7 @@ fun StatusScreen(store: CredStore, onSignedOut: () -> Unit, onSessionExpired: ()
                             if (!firstRow) RowDivider()
                             firstRow = false
                             Row(
-                                modifier = Modifier.fillMaxWidth().deleteOnLongPress { askDeleteOnServer(ep) }.padding(vertical = 12.dp),
+                                modifier = Modifier.fillMaxWidth().alpha(if (deletingKey == ep.id) 0.45f else 1f).deleteOnLongPress { askDeleteOnServer(ep) }.padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {

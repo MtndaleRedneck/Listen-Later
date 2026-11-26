@@ -223,6 +223,21 @@ adb shell am force-stop com.listenlater; sleep 1
 adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 6
 swipe_up; sleep 1
 adb exec-out screencap -p > $OUT/v19-episodes-right.png
+# v112: press and hold a feed row -> delete dialog -> Delete (debug demo, no server).
+adb shell am force-stop com.listenlater; sleep 1
+adb shell am start -n com.listenlater/.MainActivity --ez demo true; sleep 6
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+ROW=$(adb shell cat /sdcard/ui.xml | grep -o 'text="A quite long video title[^"]*"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1)
+B=$(echo "$ROW" | grep -o "\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]" | head -1)
+if [ -n "$B" ]; then
+  X1=$(echo $B | cut -d'[' -f2 | cut -d',' -f1); Y1=$(echo $B | cut -d'[' -f2 | cut -d',' -f2 | cut -d']' -f1)
+  X2=$(echo $B | cut -d'[' -f3 | cut -d',' -f1); Y2=$(echo $B | cut -d'[' -f3 | cut -d',' -f2 | cut -d']' -f1)
+  adb shell "input swipe $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )) $(( (X1+X2)/2 )) $(( (Y1+Y2)/2 )) 1200"
+  sleep 1.5
+  adb exec-out screencap -p > $OUT/v112-delete-dialog.png
+  tap_text "Delete"; sleep 2
+  adb exec-out screencap -p > $OUT/v112-after-delete.png
+else echo "REQUIRED-MISS: demo row not found"; fi
 ls -la $OUT
 adb shell wm size reset
 adb shell wm density reset
