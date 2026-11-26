@@ -121,6 +121,18 @@ if V == "custom":
     sh("docker compose start redis"); time.sleep(6)
     code, j, _ = http("GET", "/api/episode/individual/capability", tok)
     rec("session works again after Redis returns", code == 200, code)
+    # Fence on its own: bump auth_version in the database with NO logout call (Redis is up, the
+    # token is still in the store). Only the interceptor can refuse this session.
+    code, j, tokf = login()
+    code, j, _ = http("GET", "/api/episode/individual/capability", tokf)
+    rec("control: fresh session accepted before the version bump", code == 200, code)
+    db_exec("UPDATE user SET auth_version = auth_version + 1")
+    code, j, _ = http("GET", "/api/episode/individual/capability", tokf)
+    rec("fence alone: session refused after a database-only version bump (no logout)", code == 401, (code, j))
+    code, j, tokg = login()
+    code, j, _ = http("GET", "/api/episode/individual/capability", tokg)
+    rec("fence: a new sign-in after the bump works", code == 200 and bool(tokg), code)
+    tok = tokg
     code, j, tok2 = login()
     code, j, _ = http("POST", "/api/account/reset-password", tok2, {"password": "Root@123", "newPassword": "Fixture#2026pw"})
     rec("password change accepted", code == 200 and (j or {}).get("code") == 200, (code, j))

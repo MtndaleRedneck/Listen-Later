@@ -8,7 +8,7 @@ cat > docker-compose.yml <<YML
 services:
   pigeon-pod:
     image: pp-fixture:$V
-    ports: ['8834:8080']
+    ports: ['127.0.0.1:8834:8080']
     environment:
       - SPRING_DATASOURCE_URL=jdbc:sqlite:/data/pigeon-pod.db
       - PIGEON_LOG_FILE=/data/logs/pigeon-pod.log

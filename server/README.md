@@ -29,19 +29,29 @@ Redis (custom path only): internal network, no published port, a generated passw
 
 ## Verify on a clean fixture
 
-`fixture/prepare.sh stock|custom`, then `fixture/run-fixture.sh stock|custom` from the same directory (needs git, Maven, JDK, Docker) clones upstream, applies the
-patches, runs `mvn test`, builds the image, and checks the routes with synthetic data and a
-throwaway admin. Last results: stock 75 tests and 9 checks; custom 78 tests and 16 checks
-(including restart, Redis stopped, password change), all passing. With Redis stopped the 503 took about a minute to arrive, so expect a slow answer, not an instant one.
+Run these in order from an empty working directory (V is `stock` or `custom`):
+
+    /path/to/server/fixture/prepare.sh V    # clone upstream b6e1a49, apply the patches into ./pp
+    /path/to/server/fixture/build.sh V      # mvn test in ./pp, then docker build -t pp-fixture:V
+    /path/to/server/fixture/run-fixture.sh V  # compose up (127.0.0.1:8834), run fixture.py checks
+
+It uses synthetic data and a throwaway admin. Last results: stock 75 tests and 9 checks; custom
+78 tests and 19 checks (restart, Redis stopped, a database-only version bump that only the
+sign-in fence can refuse, password change), all passing. With Redis stopped the 503 took about a
+minute to arrive, so expect a slow answer, not an instant one. The fixture does not cover a
+non-admin account, channel-owned videos, or files on disk; unit tests cover the first two.
 
 ## Notes on the fixture
 
 - Prerequisites: git, JDK 17, Maven, Docker with Compose, python3, and `sudo` (the scripts
   `chmod` the data folder so the container user can write it; on a machine without `sudo`, make
-  that folder writable yourself).
+  that folder writable yourself). The fixture publishes port 8834 on 127.0.0.1 only.
 - The fixture signs in as PigeonPod's stock first-run admin (`root` / `Root@123`) on a throwaway
   container with synthetic data, then changes that password. Never point it at a real server.
 - Redis is tested with a password only (`SPRING_DATA_REDIS_PASSWORD`). A Redis username (ACL)
   is not tested.
 - After a password change, the older session gets HTTP 401 (the body carries its own code 500).
   Listen Later checks the HTTP status first, so it treats that as "sign in again".
+- The fence adds migration `V58__Add_auth_version_to_user.sql`. If a later PigeonPod release adds
+  its own V58, Flyway will refuse to start: renumber the file after re-applying.
+- With Redis stopped, requests wait about a minute before the 503, because no Redis timeout is set.
