@@ -5,7 +5,6 @@ import androidx.compose.ui.semantics.getOrNull
 import android.content.Intent
 import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -50,19 +49,8 @@ class HeaderParityDeviceTest {
 
     /** Wait until THIS screen (by its own title text) is on screen and laid out, never a neighbour's header. */
     private fun ready(title: String, button: String) {
-        try {
-            rule.waitUntil(20_000) {
-                runCatching { b("content_top"); b("screen_header"); cd(button); titleText() == title }.getOrDefault(false)
-            }
-        } catch (e: Throwable) {
-            // Evidence for a failed wait: which of the four conditions holds, the unmerged semantics tree, and a screenshot.
-            fun has(n: String, f: () -> Any?) = runCatching { f(); "yes" }.getOrElse { "NO" }
-            val report = "ready($title,$button) failed: content_top=${has("c") { b("content_top") }} screen_header=${has("h") { b("screen_header") }} " +
-                "button=${has("b") { cd(button) }} titleText=${runCatching { titleText() }.getOrElse { "ERR ${it.message}" }}"
-            android.util.Log.e("HEADER_PARITY", report)
-            File(dir, "$laneTag-ready-failed.txt").writeText(report + "\n" + runCatching { rule.onRoot(useUnmergedTree = true).printToString(200) }.getOrElse { "tree ERR ${it.message}" })
-            shot("ready-failed")
-            throw e
+        rule.waitUntil(20_000) {
+            runCatching { b("content_top"); b("screen_header"); cd(button); titleText() == title }.getOrDefault(false)
         }
         rule.waitForIdle()
         assertEquals("on the $title screen", title, titleText())
