@@ -9,10 +9,11 @@ set -euxo pipefail
 OUT=header-parity
 mkdir -p $OUT
 adb shell settings put global hide_error_dialogs 1
-trap 'adb shell wm size reset; adb shell wm density reset; adb shell settings put system font_scale 1.0' EXIT
+trap 'adb logcat -d -s HeaderParity:V > $OUT/logcat-last.txt 2>&1 || true; adb pull /sdcard/Android/data/com.listenlater/files/header-parity/. $OUT/ >/dev/null 2>&1 || true; adb shell wm size reset; adb shell wm density reset; adb shell settings put system font_scale 1.0' EXIT
 
 ./gradlew --no-daemon installDebug installDebugAndroidTest 2>&1 | tee $OUT/gradle.log
 adb shell pm list instrumentation | tee $OUT/instrumentation-list.txt
+adb shell pm grant com.listenlater android.permission.POST_NOTIFICATIONS
 
 # Lanes: size/density (dp width) x font scale. 1440x2807 @649 dpi is 355 dp wide (the narrow, <400 dp
 # branch), 1080x2340 @440 dpi is 392 dp (the producer narrow lane); 1080x2400 @420 dpi is 411 dp (>= 400 dp). Each lane runs the same zero-tolerance test.

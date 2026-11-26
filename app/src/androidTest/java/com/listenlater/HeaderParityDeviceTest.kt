@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToLog
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -49,8 +50,16 @@ class HeaderParityDeviceTest {
 
     /** Wait until THIS screen (by its own title text) is on screen and laid out, never a neighbour's header. */
     private fun ready(title: String, button: String) {
-        rule.waitUntil(20_000) {
-            runCatching { b("content_top"); b("screen_header"); cd(button); titleText() == title }.getOrDefault(false)
+        try {
+            rule.waitUntil(20_000) {
+                runCatching { b("content_top"); b("screen_header"); cd(button); titleText() == title }.getOrDefault(false)
+            }
+        } catch (t: Throwable) {
+            // Fail closed, but leave the evidence: what the semantics tree and the screen really looked like.
+            runCatching { shot("FAILED-$title") }
+            runCatching { rule.onAllNodes(androidx.compose.ui.test.isRoot()).printToLog("HeaderParity") }
+            android.util.Log.e("HeaderParity", "not ready: $title (button $button)", t)
+            throw t
         }
         rule.waitForIdle()
         assertEquals("on the $title screen", title, titleText())
@@ -60,6 +69,11 @@ class HeaderParityDeviceTest {
 
     @Test fun homeSettingsAndFeedbackHeadersAreIdentical() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        // A notification-permission dialog over the app pauses it and starves composition; grant first.
+        runCatching {
+            InstrumentationRegistry.getInstrumentation().uiAutomation
+                .grantRuntimePermission(ctx.packageName, "android.permission.POST_NOTIFICATIONS")
+        }
         val i = Intent(ctx, MainActivity::class.java).putExtra("demo", true)
         ActivityScenario.launch<MainActivity>(i).use {
             ready("Listen Later", "Settings")
