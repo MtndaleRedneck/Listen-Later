@@ -2,15 +2,18 @@ package com.listenlater
 
 import android.content.Intent
 import android.graphics.Bitmap
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,9 +21,10 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Home header and Settings header must be pixel-identical: same top, same bottom, same title
- * position, same button position, same first-content edge. Measured from the real rendered
- * layout (semantics bounds in px on the device) and two real screenshots are saved.
+ * Home, Settings and Feedback headers must be pixel-identical: same header top/bottom, title
+ * position and size, button position, and first-content edge. Measured from the real rendered
+ * layout (semantics bounds in px on the device), zero tolerance, with a real screenshot per
+ * screen. Runs under whatever font scale / size the lane set; the lane tag is in the file names.
  */
 @RunWith(AndroidJUnit4::class)
 class HeaderParityDeviceTest {
@@ -28,35 +32,50 @@ class HeaderParityDeviceTest {
 
     private data class M(val header: Rect, val title: Rect, val button: Rect, val content: Rect)
 
-    private fun bounds(tag: String) = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+    private fun b(tag: String) = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
     private fun cd(d: String) = rule.onNodeWithContentDescription(d).fetchSemanticsNode().boundsInRoot
+    private val laneTag get() = InstrumentationRegistry.getArguments().getString("lane") ?: "default"
+    private val dir get() = File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null), "header-parity").apply { mkdirs() }
+
     private fun shot(name: String) {
         val bmp = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        val dir = File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null), "header-parity").apply { mkdirs() }
-        FileOutputStream(File(dir, "$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        FileOutputStream(File(dir, "$laneTag-$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    @Test fun homeAndSettingsHeadersAreIdentical() {
+    private fun ready(button: String) {
+        rule.waitUntil(20_000) {
+            runCatching { b("content_top"); b("screen_title"); b("screen_header"); cd(button); true }.getOrDefault(false)
+        }
+        rule.waitForIdle()
+    }
+
+    private fun measure(button: String) = M(b("screen_header"), b("screen_title"), cd(button), b("content_top"))
+
+    @Test fun homeSettingsAndFeedbackHeadersAreIdentical() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val i = Intent(ctx, MainActivity::class.java).putExtra("demo", true)
         ActivityScenario.launch<MainActivity>(i).use {
-            rule.waitUntil(20_000) { runCatching { bounds("content_top"); true }.getOrDefault(false) }
-            rule.waitForIdle()
-            val home = M(bounds("screen_header"), bounds("screen_title"), cd("Settings"), bounds("content_top"))
-            shot("home")
+            ready("Settings")
+            val home = measure("Settings"); shot("home")
             rule.onNodeWithContentDescription("Settings").performClick()
-            rule.waitUntil(10_000) { runCatching { bounds("content_top"); bounds("screen_title").top; rule.onNodeWithContentDescription("Back").fetchSemanticsNode(); true }.getOrDefault(false) }
-            rule.waitForIdle()
-            val set = M(bounds("screen_header"), bounds("screen_title"), cd("Back"), bounds("content_top"))
-            shot("settings")
-            android.util.Log.i("HeaderParity", "home=$home settings=$set"); println("HEADER_PARITY home=$home settings=$set")
-            assertEquals("header top", home.header.top, set.header.top, 0f)
-            assertEquals("header bottom", home.header.bottom, set.header.bottom, 0f)
-            assertEquals("title center y", home.title.center.y, set.title.center.y, 0f)
-            assertEquals("title height", home.title.height, set.title.height, 0f)
-            assertEquals("button top", home.button.top, set.button.top, 0f)
-            assertEquals("button height", home.button.height, set.button.height, 0f)
-            assertEquals("first content top", home.content.top, set.content.top, 0f)
+            ready("Back")
+            val set = measure("Back"); shot("settings")
+            rule.onNodeWithText("Send feedback, report a bug, or suggest a feature").performScrollTo().performClick()
+            ready("Back")
+            val fb = measure("Back"); shot("feedback")
+            val line = "lane=$laneTag home=$home settings=$set feedback=$fb"
+            android.util.Log.i("HeaderParity", line)
+            File(dir, "$laneTag-values.txt").writeText(line + "\n")
+            for ((name, m) in listOf("settings" to set, "feedback" to fb)) {
+                assertEquals("$name header top", home.header.top, m.header.top, 0f)
+                assertEquals("$name header bottom", home.header.bottom, m.header.bottom, 0f)
+                assertEquals("$name title top", home.title.top, m.title.top, 0f)
+                assertEquals("$name title height", home.title.height, m.title.height, 0f)
+                assertEquals("$name button top", home.button.top, m.button.top, 0f)
+                assertEquals("$name button height", home.button.height, m.button.height, 0f)
+                assertEquals("$name first content top", home.content.top, m.content.top, 0f)
+            }
+            assertTrue("sanity: header has real height", home.header.height > 100f)
         }
     }
 }

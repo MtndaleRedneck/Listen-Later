@@ -62,10 +62,10 @@ fun SettingsScreen(
     Column(
         Modifier.fillMaxSize().background(Bg).verticalScroll(scrollState).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp).testTag("screen_header")) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.screenHeaderRow()) {
             HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
             Spacer(Modifier.width(8.dp))
-            Text("Settings", modifier = Modifier.testTag("screen_title"), color = TextC, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Settings", modifier = Modifier.testTag("screen_title"), color = TextC, fontSize = headerTitleSize(), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         BackHandler { onBack() }
 

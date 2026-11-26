@@ -9,20 +9,31 @@ set -euxo pipefail
 OUT=header-parity
 mkdir -p $OUT
 adb shell settings put global hide_error_dialogs 1
-adb shell wm size 1440x2807
-adb shell wm density 649
-trap 'adb shell wm size reset; adb shell wm density reset' EXIT
+trap 'adb shell wm size reset; adb shell wm density reset; adb shell settings put system font_scale 1.0' EXIT
 
 ./gradlew --no-daemon installDebug installDebugAndroidTest 2>&1 | tee $OUT/gradle.log
 adb shell pm list instrumentation | tee $OUT/instrumentation-list.txt
-adb logcat -c
-adb shell am instrument -w -e class com.listenlater.HeaderParityDeviceTest com.listenlater.test/androidx.test.runner.AndroidJUnitRunner | tee $OUT/instrument.txt
-adb logcat -d -s HeaderParity:I > $OUT/logcat-parity.txt
-grep -q '^OK (1 test)' $OUT/instrument.txt || { echo "HeaderParityDeviceTest did not pass"; exit 1; }
-grep -q 'HeaderParity' $OUT/logcat-parity.txt || { echo "no HEADER_PARITY numbers logged"; exit 1; }
-adb pull /sdcard/Android/data/com.listenlater/files/header-parity/. $OUT/
-test -s $OUT/home.png && test -s $OUT/settings.png || { echo "home/settings screenshots missing"; exit 1; }
 
+# Lanes: size/density (dp width) x font scale. 1440x2807 @649 dpi is 355 dp wide (the narrow, <400 dp
+# branch); 1080x2400 @420 dpi is 411 dp. Each lane runs the same zero-tolerance test.
+run_lane() { # name size density fontscale
+  adb shell wm size "$2"; adb shell wm density "$3"; adb shell settings put system font_scale "$4"
+  sleep 2
+  adb logcat -c
+  adb shell am instrument -w -e class com.listenlater.HeaderParityDeviceTest -e lane "$1" com.listenlater.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrument-$1.txt"
+  grep -q '^OK (1 test)' "$OUT/instrument-$1.txt" || { echo "lane $1: HeaderParityDeviceTest did not pass"; exit 1; }
+  adb logcat -d -s HeaderParity:I > "$OUT/logcat-$1.txt"
+  grep -q "lane=$1" "$OUT/logcat-$1.txt" || { echo "lane $1: no HEADER_PARITY numbers logged"; exit 1; }
+  adb pull /sdcard/Android/data/com.listenlater/files/header-parity/. $OUT/
+  for n in home settings feedback; do test -s "$OUT/$1-$n.png" || { echo "lane $1: $n screenshot missing"; exit 1; }; done
+}
+run_lane narrow-355dp-font1.0 1440x2807 649 1.0
+run_lane narrow-355dp-font1.3 1440x2807 649 1.3
+run_lane wide-411dp-font1.0 1080x2400 420 1.0
+run_lane wide-411dp-font1.3 1080x2400 420 1.3
+
+# Recording uses the primary tester's phone geometry at default font.
+adb shell wm size 1440x2807; adb shell wm density 649; adb shell settings put system font_scale 1.0
 adb shell pm grant com.listenlater android.permission.POST_NOTIFICATIONS
 adb shell am force-stop com.listenlater
 adb shell am start -n com.listenlater/.MainActivity --ez demo true

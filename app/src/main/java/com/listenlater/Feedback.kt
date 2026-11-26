@@ -1,5 +1,6 @@
 package com.listenlater
 
+import androidx.compose.ui.platform.testTag
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -79,16 +80,15 @@ fun FeedbackScreen(onBack: () -> Unit) {
     var text by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     val c = remember { Feedback.context(ctx) }
     fun open(url: String) = runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.offset(x = (-4).dp, y = (-4).dp)) {
+    Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.screenHeaderRow()) {
             HeaderIconButton(onBack, "Back") { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextC) }
             Spacer(Modifier.width(8.dp))
-            Text("Feedback", color = TextC, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("Feedback", modifier = Modifier.testTag("screen_title"), color = TextC, fontSize = headerTitleSize(), fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.height(10.dp))
         BackHandler { onBack() }
 
-        FeedbackCard {
+        FeedbackCard(tag = "content_top") {
             Text("Tell us what is on your mind: a bug, an idea, or general feedback. Reports may become public issues on GitHub, so leave out personal details.", color = Muted, fontSize = 13.sp, lineHeight = 18.sp)
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
@@ -132,9 +132,9 @@ fun FeedbackScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun FeedbackCard(title: String = "", content: @Composable ColumnScope.() -> Unit) {
+private fun FeedbackCard(title: String = "", tag: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Card).padding(16.dp),
+        Modifier.fillMaxWidth().then(if (tag != null) Modifier.testTag(tag) else Modifier).clip(RoundedCornerShape(20.dp)).background(Card).padding(16.dp),
     ) {
         if (title.isNotEmpty()) {
             Text(title, color = TextC, fontSize = 16.sp, fontWeight = FontWeight.Bold)

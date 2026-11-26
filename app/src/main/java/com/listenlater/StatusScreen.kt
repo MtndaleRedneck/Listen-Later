@@ -143,13 +143,10 @@ private val TopArrowIcon: ImageVector = ImageVector.Builder(
 private fun AppHeader(onSettings: () -> Unit, connected: Boolean) {
     val ctx = LocalContext.current
     val icon = remember { ctx.packageManager.getApplicationIcon(ctx.packageName).toImageBitmap() }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp).testTag("screen_header")) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.screenHeaderRow()) {
         Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
         Spacer(Modifier.width(8.dp))
-        // Narrow phone plus a large font scale: the title would take the width the status pill needs
-        // ("Disconnected" clipped at 360dp x 1.3), so the title stays at 18sp unscaled there.
-        val titleCfg = LocalConfiguration.current
-        val titleSize = if (titleCfg.screenWidthDp < 400 && titleCfg.fontScale > 1.15f) (18f / titleCfg.fontScale).sp else 20.sp
+        val titleSize = headerTitleSize()
         Text("Listen Later", modifier = Modifier.testTag("screen_title"), fontSize = titleSize, fontWeight = FontWeight.Bold, color = TextC, maxLines = 1, overflow = TextOverflow.Ellipsis)
         // Status pill centered in the free space between the name and the gear tile;
         // bounded so a long status wraps instead of competing with the title.

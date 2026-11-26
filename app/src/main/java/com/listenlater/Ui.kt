@@ -1,5 +1,7 @@
 package com.listenlater
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -212,3 +214,17 @@ fun HTextButton(onClick: () -> Unit, content: @Composable () -> Unit) {
     val view = LocalView.current
     TextButton(onClick = { tapHaptic(view); onClick() }) { content() }
 }
+
+/**
+ * One size for every screen title (Home, Settings, Feedback), so the headers can never drift apart.
+ * Narrow phone plus a large font scale: the title would take the width the Home status pill needs,
+ * so it shrinks to 18sp unscaled there; every screen applies the same rule.
+ */
+@androidx.compose.runtime.Composable
+fun headerTitleSize(): androidx.compose.ui.unit.TextUnit {
+    val cfg = androidx.compose.ui.platform.LocalConfiguration.current
+    return if (cfg.screenWidthDp < 400 && cfg.fontScale > 1.15f) (18f / cfg.fontScale).sp else 20.sp
+}
+
+/** The one header row geometry shared by all screens: 12dp above, 8dp below, 48dp button row. */
+fun Modifier.screenHeaderRow(): Modifier = this.padding(top = 12.dp, bottom = 8.dp).testTag("screen_header")
