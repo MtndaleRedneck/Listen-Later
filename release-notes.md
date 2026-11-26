@@ -1,3 +1,13 @@
+## What's new in 1.12.1
+
+November 26, 2026. The top of the app no longer jumps when you switch screens.
+
+Fixed:
+- The header (the title row with the back arrow or settings gear) is now exactly the same height and position on the main screen, Settings and Feedback. Before, Settings sat a few pixels higher than the main screen.
+
+Improved:
+- Checked on emulators at normal and larger (1.3x) text sizes.
+
 ## What's new in 1.12.0
 
 November 25, 2026. You can now delete a video from the list.
