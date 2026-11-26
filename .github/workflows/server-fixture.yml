@@ -17,10 +17,13 @@ jobs:
         variant: [stock, custom]
     steps:
       - uses: actions/checkout@v4
+      - name: Check out the packaged candidate (server/ as shipped)
+        uses: actions/checkout@v4
+        with: { ref: 6e3c5d4a6fce6a2316e7376823e44eee93d0a37f, path: cand }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - name: Prepare tree
-        run: ./server-fixture/prepare.sh ${{ matrix.variant }}
+        run: ./cand/server/fixture/prepare.sh ${{ matrix.variant }}
       - name: Server tests (mvn test)
         shell: bash
         run: |
@@ -30,7 +33,7 @@ jobs:
       - name: Build image (repo Dockerfile)
         run: cd pp && docker build -t pp-fixture:${{ matrix.variant }} .
       - name: Run fixture
-        run: ./server-fixture/run-fixture.sh ${{ matrix.variant }}
+        run: ./cand/server/fixture/run-fixture.sh ${{ matrix.variant }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
