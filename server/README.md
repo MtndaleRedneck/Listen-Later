@@ -33,3 +33,15 @@ Redis (custom path only): internal network, no published port, a generated passw
 patches, runs `mvn test`, builds the image, and checks the routes with synthetic data and a
 throwaway admin. Last results: stock 75 tests and 9 checks; custom 78 tests and 16 checks
 (including restart, Redis stopped, password change), all passing. With Redis stopped the 503 took about a minute to arrive, so expect a slow answer, not an instant one.
+
+## Notes on the fixture
+
+- Prerequisites: git, JDK 17, Maven, Docker with Compose, python3, and `sudo` (the scripts
+  `chmod` the data folder so the container user can write it; on a machine without `sudo`, make
+  that folder writable yourself).
+- The fixture signs in as PigeonPod's stock first-run admin (`root` / `Root@123`) on a throwaway
+  container with synthetic data, then changes that password. Never point it at a real server.
+- Redis is tested with a password only (`SPRING_DATA_REDIS_PASSWORD`). A Redis username (ACL)
+  is not tested.
+- After a password change, the older session gets HTTP 401 (the body carries its own code 500).
+  Listen Later checks the HTTP status first, so it treats that as "sign in again".
