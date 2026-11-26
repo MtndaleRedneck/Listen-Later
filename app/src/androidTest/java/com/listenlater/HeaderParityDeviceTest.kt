@@ -51,17 +51,36 @@ class HeaderParityDeviceTest {
         Thread.sleep(1000)
         var prev: Bitmap? = null
         var good: Bitmap? = null
+        var last: Bitmap? = null
         for (attempt in 1..12) {
             rule.waitForIdle()
-            val cur = ui.takeScreenshot() ?: continue
+            val cur = ui.takeScreenshot()
+            if (cur == null) { android.util.Log.i("HeaderParity", "shot=$name attempt=$attempt screenshot=null"); continue }
+            last = cur
             val same = prev != null && prev.width == cur.width && prev.height == cur.height && prev.sameAs(cur)
-            val ink = !expectInk || titleInk(cur, rule.onNodeWithTag("screen_title").fetchSemanticsNode().boundsInWindow) > 200
-            if (same && ink) { good = cur; break }
+            val ink = if (!expectInk) -1 else titleInk(cur, rule.onNodeWithTag("screen_title").fetchSemanticsNode().boundsInWindow)
+            android.util.Log.i("HeaderParity", "shot=$name attempt=$attempt same=$same ink=$ink (need >200) size=${cur.width}x${cur.height}")
+            if (same && (!expectInk || ink > 200)) { good = cur; break }
             prev = cur
             Thread.sleep(500)
         }
+        if (good == null) diagnose(name, last)
         val bmp = good ?: throw AssertionError("screenshot $name never settled to a stable frame with the title drawn")
         FileOutputStream(File(dir, "$laneTag-$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** Failure evidence only (no assertion is relaxed): the last frame and every window on screen. */
+    private fun diagnose(name: String, last: Bitmap?) {
+        runCatching {
+            val out = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let { File(it).apply { mkdirs() } } ?: dir
+            if (last != null) FileOutputStream(File(out, "FAIL-$laneTag-$name-lastframe.png")).use { last.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val ui = InstrumentationRegistry.getInstrumentation().uiAutomation
+            for (w in ui.windows) {
+                val r = w.root
+                android.util.Log.e("HeaderParity", "window layer=${w.layer} type=${w.type} title=${w.title} active=${w.isActive} focused=${w.isFocused} pkg=${r?.packageName} class=${r?.className} text=${r?.text}")
+            }
+            rule.onAllNodes(androidx.compose.ui.test.isRoot()).printToLog("HeaderParity")
+        }
     }
 
     private fun titleInk(bmp: Bitmap, r: Rect): Int {

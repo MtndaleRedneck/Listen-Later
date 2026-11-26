@@ -297,6 +297,16 @@ jobs:
           target: google_apis
           profile: pixel_6
           script: ./gradlew --no-daemon connectedDebugAndroidTest && adb install -r app/build/outputs/apk/debug/app-debug.apk && ./scripts/share-smoke.sh
+      - name: Upload migration-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-test-evidence
+          if-no-files-found: warn
+          path: |
+            app/build/outputs/androidTest-results/
+            app/build/outputs/connected_android_test_additional_output/
+            app/build/reports/androidTests/
 
   # Minified release APK on a real emulator: boot, credential-store init, share
   # intake and worker scheduling must survive R8 + resource shrinking. Logcat-based
