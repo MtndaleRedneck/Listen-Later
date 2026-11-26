@@ -70,43 +70,10 @@ class HeaderParityDeviceTest {
         FileOutputStream(File(dir, "$laneTag-$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private var anrWaitClicks = 0
+    private val anrGuard = LauncherAnrGuard { n, b -> diagnose(n, b) }
 
-    /**
-     * The emulator's launcher can show "Pixel Launcher isn't responding" over the app (seen in the saved
-     * last frame of a failed run); it dims the title, so the ink check can never pass. Dismiss ONLY that exact
-     * dialog, ONLY with its own Wait button, at most 4 times in the test; any other "isn't responding" dialog
-     * (including one for this app) fails immediately with the dialog title. No blanket dialog mask, no assertion relaxed.
-     */
-    private fun waitOutLauncherAnrOnly(name: String) {
-        val ui = InstrumentationRegistry.getInstrumentation().uiAutomation
-        try {
-            waitOutLauncherAnrOnlyInner(name, ui)
-        } catch (t: Throwable) {
-            // Keep the failure evidence (frame, windows, tree) before the error leaves; then rethrow unchanged.
-            diagnose("$name-anr-fail", ui.takeScreenshot())
-            throw t
-        }
-    }
-
-    private fun waitOutLauncherAnrOnlyInner(name: String, ui: android.app.UiAutomation) {
-        for (w in ui.windows) {
-            val root = w.root ?: continue
-            val hits = root.findAccessibilityNodeInfosByText("isn't responding")
-            if (hits.isEmpty()) continue
-            val title = hits.first().text?.toString() ?: ""
-            if (title != "Pixel Launcher isn't responding") throw AssertionError("unexpected ANR dialog (not the launcher): '$title'")
-            if (anrWaitClicks >= 4) throw AssertionError("launcher ANR dialog still present after 4 Wait clicks")
-            val wait = root.findAccessibilityNodeInfosByText("Wait").firstOrNull() ?: throw AssertionError("launcher ANR dialog has no Wait button")
-            diagnose("$name-anr-predismiss-$anrWaitClicks", ui.takeScreenshot()) // frame + windows + logcat BEFORE the click
-            var n: android.view.accessibility.AccessibilityNodeInfo? = wait
-            while (n != null && !n.isClickable) n = n.parent
-            if (n == null || !n.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) throw AssertionError("could not click Wait on the launcher ANR dialog")
-            anrWaitClicks++
-            android.util.Log.i("HeaderParity", "launcher ANR dialog dismissed with Wait (click $anrWaitClicks of max 4)")
-            Thread.sleep(1000)
-        }
-    }
+    /** See LauncherAnrGuard: dismiss ONLY the launcher's own ANR dialog (Wait, max 4); any other ANR dialog fails. */
+    private fun waitOutLauncherAnrOnly(name: String) = anrGuard.waitOut(name)
 
     /** Failure evidence only (no assertion is relaxed): the last frame and every window on screen. */
     private fun diagnose(name: String, last: Bitmap?) {
