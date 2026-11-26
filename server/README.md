@@ -35,8 +35,8 @@ Run these in order from an empty working directory (V is `stock` or `custom`):
     /path/to/server/fixture/build.sh V      # mvn test in ./pp, then docker build -t pp-fixture:V
     /path/to/server/fixture/run-fixture.sh V  # compose up (127.0.0.1:8834), run fixture.py checks
 
-It uses synthetic data and a throwaway admin. Last results: stock 75 tests and 9 checks; custom
-78 tests and 19 checks (restart, Redis stopped, a database-only version bump that only the
+It uses synthetic data and a throwaway admin. Last results: stock 77 tests and 9 checks; custom
+80 tests and 19 checks (restart, Redis stopped, a database-only version bump that only the
 sign-in fence can refuse, password change), all passing. With Redis stopped the 503 took about a
 minute to arrive, so expect a slow answer, not an instant one. The fixture does not cover a
 non-admin account, channel-owned videos, or files on disk; unit tests cover the first two.
@@ -56,8 +56,18 @@ non-admin account, channel-owned videos, or files on disk; unit tests cover the 
   its own V58, Flyway will refuse to start: renumber the file after re-applying.
 - With Redis stopped, requests wait about a minute before the 503, because no Redis timeout is set.
 
-## Known limits inherited from PigeonPod
+## Files left behind and known limits
 
-These come from PigeonPod's own download and cleanup code, which the delete patch reuses and does not change.
-- Cleaning up files after a delete removes subtitle and thumbnail files in the same folder whose names start with the video's file name plus a dot. A different video whose title starts with this one's title followed by a dot (for example "Title" and "Title.Remix") can lose its subtitle or thumbnail when the first is deleted. Its media file is not touched. PigeonPod's own "delete" for channels and playlists does the same.
-- If a delete lands in the instant a download is starting (after the download read the row, before it marks it as downloading), the download can still write its files for a video that no longer exists. No entry comes back; the leftover files stay in the folder. PigeonPod's own delete has the same gap.
+- What the new delete removes from disk: the video's media file, its chapters file, and its subtitle
+  (`<name>.vtt`, `<name>.srt`) and thumbnail (`<name>.jpg`, `.jpeg`, `.png`, `.webp`) files, matched
+  by exact name only. Subtitles with a language in the name, such as `<name>.en.vtt`, are left in
+  the folder, because a name that merely starts with another video's name cannot be proven to
+  belong to the deleted video. Delete them by hand if you want them gone.
+- PigeonPod's own cleanup for channels and playlists (not the new delete) matches files by
+  "starts with the video's name plus a dot". It can remove a subtitle or thumbnail that belongs to a
+  different video whose title begins with the same text and a dot (for example "Title" and
+  "Title.Remix"). The new delete does not do this, and the patch does not change that code.
+- If a delete lands in the instant a download is starting (after the download read the row, before
+  it marks it as downloading), the download can still write its files for a video that no longer
+  exists. No entry comes back; the leftover files stay in the folder. PigeonPod's own delete has the
+  same gap.
