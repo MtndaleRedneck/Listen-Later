@@ -147,10 +147,10 @@ index ce13d6f..48c323e 100644
      Episode episode = episodeMapper.selectById(id);
 diff --git a/backend/src/test/java/top/asimov/pigeon/controller/EpisodeControllerIndividualAuthTest.java b/backend/src/test/java/top/asimov/pigeon/controller/EpisodeControllerIndividualAuthTest.java
 new file mode 100644
-index 0000000..685f1a2
+index 0000000..3554ea0
 --- /dev/null
 +++ b/backend/src/test/java/top/asimov/pigeon/controller/EpisodeControllerIndividualAuthTest.java
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,125 @@
 +package top.asimov.pigeon.controller;
 +
 +import static org.mockito.ArgumentMatchers.anyString;
@@ -265,18 +265,16 @@ index 0000000..685f1a2
 +        .andExpect(status().isOk()).andExpect(jsonPath("$.data.result").value("removed"));
 +    mvc.perform(delete("/api/episode/individual/gone").header("satoken", t))
 +        .andExpect(status().isOk()).andExpect(jsonPath("$.data.result").value("already_gone"));
-+    org.junit.jupiter.api.Assertions.assertEquals(409, code(mvc.perform(delete("/api/episode/individual/busy").header("satoken", t))));
-+    org.junit.jupiter.api.Assertions.assertEquals(422, code(mvc.perform(delete("/api/episode/individual/other").header("satoken", t))));
++    mvc.perform(delete("/api/episode/individual/busy").header("satoken", t))
++        .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(409))
++        .andExpect(jsonPath("$.msg").value("Episode is downloading right now. Try again shortly."))
++        .andExpect(jsonPath("$.data").doesNotExist());
++    mvc.perform(delete("/api/episode/individual/other").header("satoken", t))
++        .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(422))
++        .andExpect(jsonPath("$.msg").value("Episode is not in the Individual Videos feed"))
++        .andExpect(jsonPath("$.data").doesNotExist());
 +  }
 +
-+  private int code(org.springframework.test.web.servlet.ResultActions r) throws Exception {
-+    var res = r.andReturn().getResponse();
-+    String body = res.getContentAsString();
-+    int httpStatus = res.getStatus();
-+    // report both the HTTP status and the SaResult code so the mapping is explicit in the log
-+    System.out.println("MAPPING http=" + httpStatus + " body=" + body);
-+    return body.contains("\"code\":409") ? 409 : body.contains("\"code\":422") ? 422 : httpStatus;
-+  }
 +}
 diff --git a/backend/src/test/java/top/asimov/pigeon/service/EpisodeServiceIndividualRemovalRealDbTest.java b/backend/src/test/java/top/asimov/pigeon/service/EpisodeServiceIndividualRemovalRealDbTest.java
 new file mode 100644
