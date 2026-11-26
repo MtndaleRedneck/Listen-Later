@@ -42,11 +42,16 @@ class HeaderParityDeviceTest {
         FileOutputStream(File(dir, "$laneTag-$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun ready(button: String) {
+    private fun titleText() = rule.onNodeWithTag("screen_title").fetchSemanticsNode()
+        .config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text }
+
+    /** Wait until THIS screen (by its own title text) is on screen and laid out, never a neighbour's header. */
+    private fun ready(title: String, button: String) {
         rule.waitUntil(20_000) {
-            runCatching { b("content_top"); b("screen_title"); b("screen_header"); cd(button); true }.getOrDefault(false)
+            runCatching { b("content_top"); b("screen_header"); cd(button); titleText() == title }.getOrDefault(false)
         }
         rule.waitForIdle()
+        assertEquals("on the $title screen", title, titleText())
     }
 
     private fun measure(button: String) = M(b("screen_header"), b("screen_title"), cd(button), b("content_top"))
@@ -55,13 +60,13 @@ class HeaderParityDeviceTest {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val i = Intent(ctx, MainActivity::class.java).putExtra("demo", true)
         ActivityScenario.launch<MainActivity>(i).use {
-            ready("Settings")
+            ready("Listen Later", "Settings")
             val home = measure("Settings"); shot("home")
             rule.onNodeWithContentDescription("Settings").performClick()
-            ready("Back")
+            ready("Settings", "Back")
             val set = measure("Back"); shot("settings")
             rule.onNodeWithText("Send feedback, report a bug, or suggest a feature").performScrollTo().performClick()
-            ready("Back")
+            ready("Feedback", "Back")
             val fb = measure("Back"); shot("feedback")
             val line = "lane=$laneTag home=$home settings=$set feedback=$fb"
             android.util.Log.i("HeaderParity", line)
