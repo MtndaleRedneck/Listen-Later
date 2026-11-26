@@ -1,7 +1,10 @@
 name: Server fixture (test only)
 # Manual, test-only: builds PigeonPod v1.31.0 (b6e1a49) with the documented patches, runs its tests,
 # then starts it in Docker with synthetic data and checks the behavior the docs describe.
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [fixture-1120]
 permissions:
   contents: read
 jobs:
