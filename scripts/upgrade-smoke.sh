@@ -80,11 +80,13 @@ answer_external_anr() {
   # 45659190054 and 45663287071: all 15 tries covered). Only when the dialog names the LAUNCHER,
   # stop that process (never the app under test) so it restarts clean; the caller relaunches the app.
   if echo "$UI" | grep -q "Pixel Launcher isn't responding"; then
+    # Diagnostic only: the launcher ANR reason as logcat recorded it (host-side filter, read-only).
+    echo "LAUNCHER-ANR-LOG:"; adb logcat -d | grep -E "ANR in com.google.android.apps.nexuslauncher|Reason: " | tail -4
     echo "stopping the hung system launcher (not the app) so the dialog does not return"
     adb shell am force-stop com.google.android.apps.nexuslauncher
     sleep 3
-    # Reviewer-requested additive step: HOME is sent only when a real focused window exists (never into a
-    # window-less launcher), once per stop; the existing relaunch by the caller follows unchanged.
+    # Readiness step after the launcher stop: wait for a real focused window, and send HOME only when one exists
+    # (never into a window-less launcher). The caller's relaunch of the app follows unchanged.
     wait_for_focus after-launcher-stop 30
     if [ "$FOCUS_READY" = 1 ]; then adb shell input keyevent KEYCODE_HOME; sleep 2; fi
   fi
