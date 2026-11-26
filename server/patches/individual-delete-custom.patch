@@ -55,7 +55,7 @@ index 96a0ded..d6b6f04 100644
 +  int deleteMapping(@Param("playlistId") String playlistId, @Param("episodeId") String episodeId);
  }
 diff --git a/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java b/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
-index ce13d6f..7859d83 100644
+index ce13d6f..46d6ed0 100644
 --- a/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
 +++ b/backend/src/main/java/top/asimov/pigeon/service/EpisodeService.java
 @@ -23,6 +23,8 @@ import org.springframework.context.MessageSource;
@@ -75,7 +75,7 @@ index ce13d6f..7859d83 100644
  import top.asimov.pigeon.model.entity.Feed;
  import top.asimov.pigeon.model.entity.Playlist;
  import top.asimov.pigeon.model.enums.EpisodeBatchAction;
-@@ -468,6 +471,69 @@ public class EpisodeService {
+@@ -468,6 +471,91 @@ public class EpisodeService {
      return episodeMapper.updateById(episode);
    }
  
@@ -125,13 +125,35 @@ index ce13d6f..7859d83 100644
 +    return "removed";
 +  }
 +
-+  private void deleteFilesAfterRowRemoval(String id, String mediaFilePath) {
++  /**
++   * Removes only files whose name is exactly this video's base name plus a plain subtitle or image
++   * extension. Files like "<base>.en.vtt" are left in place: a name that starts with "<base>."
++   * cannot be proven to belong to this video rather than to a different one, and this delete
++   * never removes a file it cannot prove is its own.
++   */
++  private void deleteOwnSidecarFiles(String mediaFilePath) throws java.io.IOException {
++    Path mediaPath = Paths.get(mediaFilePath);
++    Path parent = mediaPath.getParent();
++    if (parent == null) {
++      return;
++    }
++    String fileName = mediaPath.getFileName().toString();
++    int dotIndex = fileName.lastIndexOf('.');
++    String baseName = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
++    for (String ext : new String[] {".vtt", ".srt", ".jpg", ".jpeg", ".png", ".webp"}) {
++      String sidecar = baseName + ext;
++      if (!sidecar.equals(fileName)) {
++        Files.deleteIfExists(parent.resolve(sidecar));
++      }
++    }
++  }
++
++  void deleteFilesAfterRowRemoval(String id, String mediaFilePath) {
 +    try {
 +      if (isS3Mode()) {
 +        deleteEpisodeAssetsByMediaPath(mediaFilePath);
 +      } else if (StringUtils.hasText(mediaFilePath)) {
-+        deleteSubtitleFiles(mediaFilePath);
-+        deleteThumbnailFiles(mediaFilePath);
++        deleteOwnSidecarFiles(mediaFilePath);
 +        deleteChaptersFile(mediaFilePath, id);
 +        Files.deleteIfExists(Paths.get(mediaFilePath));
 +      }
@@ -145,69 +167,6 @@ index ce13d6f..7859d83 100644
    @Transactional
    public int deleteEpisodeCompletelyById(String id) {
      Episode episode = episodeMapper.selectById(id);
-@@ -499,6 +565,36 @@ public class EpisodeService {
-     return episodeMapper.deleteById(id);
-   }
- 
-+  /** Language part of a subtitle name such as "en", "pt-BR", "zh-Hans" or "en-orig". */
-+  private static final java.util.regex.Pattern SUBTITLE_LANG =
-+      java.util.regex.Pattern.compile("[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*");
-+
-+  /**
-+   * True only for this episode's own subtitle: {@code <base>.vtt/.srt} or {@code <base>.<lang>.vtt/.srt}.
-+   * A different video whose name merely starts with {@code <base>.} (for example "Title.Remix") is not matched.
-+   */
-+  static boolean isSubtitleSidecar(String name, String baseName) {
-+    if (!(name.endsWith(".vtt") || name.endsWith(".srt"))) {
-+      return false;
-+    }
-+    String stem = name.substring(0, name.length() - 4);
-+    if (stem.equals(baseName)) {
-+      return true;
-+    }
-+    return stem.startsWith(baseName + ".")
-+        && SUBTITLE_LANG.matcher(stem.substring(baseName.length() + 1)).matches();
-+  }
-+
-+  /** True only for this episode's own thumbnail: {@code <base>.jpg/.jpeg/.png/.webp}. */
-+  static boolean isThumbnailSidecar(String name, String baseName) {
-+    for (String ext : new String[] {".jpg", ".jpeg", ".png", ".webp"}) {
-+      if (name.equals(baseName + ext)) {
-+        return true;
-+      }
-+    }
-+    return false;
-+  }
-+
-   void deleteSubtitleFiles(String mediaFilePath) {
-     if (isS3Mode()) {
-       return;
-@@ -526,10 +622,8 @@ public class EpisodeService {
-         List<Path> subtitleFiles = pathStream
-             .filter(path -> {
-               String name = path.getFileName().toString();
--              boolean subtitleExt = name.endsWith(".vtt") || name.endsWith(".srt");
--              boolean samePrefix = name.startsWith(baseName + ".");
-               boolean isMediaFile = name.equals(fileName);
--              return subtitleExt && samePrefix && !isMediaFile;
-+              return isSubtitleSidecar(name, baseName) && !isMediaFile;
-             }).toList();
- 
-         for (Path subtitlePath : subtitleFiles) {
-@@ -587,12 +681,8 @@ public class EpisodeService {
-         List<Path> thumbnailFiles = pathStream
-             .filter(path -> {
-               String name = path.getFileName().toString();
--              boolean imageExt =
--                  name.endsWith(".jpg") || name.endsWith(".jpeg")
--                      || name.endsWith(".png") || name.endsWith(".webp");
--              boolean samePrefix = name.startsWith(baseName + ".");
-               boolean isMediaFile = name.equals(fileName);
--              return imageExt && samePrefix && !isMediaFile;
-+              return isThumbnailSidecar(name, baseName) && !isMediaFile;
-             }).toList();
- 
-         for (Path thumbnailPath : thumbnailFiles) {
 diff --git a/backend/src/test/java/top/asimov/pigeon/controller/EpisodeControllerIndividualAuthTest.java b/backend/src/test/java/top/asimov/pigeon/controller/EpisodeControllerIndividualAuthTest.java
 new file mode 100644
 index 0000000..3554ea0
@@ -704,10 +663,10 @@ index 0000000..cb3df5c
 +}
 diff --git a/backend/src/test/java/top/asimov/pigeon/service/EpisodeSidecarOwnershipTest.java b/backend/src/test/java/top/asimov/pigeon/service/EpisodeSidecarOwnershipTest.java
 new file mode 100644
-index 0000000..5daa5c9
+index 0000000..9cf383a
 --- /dev/null
 +++ b/backend/src/test/java/top/asimov/pigeon/service/EpisodeSidecarOwnershipTest.java
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,96 @@
 +package top.asimov.pigeon.service;
 +
 +import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -763,57 +722,45 @@ index 0000000..5daa5c9
 +  }
 +
 +  @Test
-+  void deletingTitleKeepsTheFilesOfTitleDotRemix() throws IOException {
++  void removalDeletesOnlyTheExactOwnFiles() throws IOException {
 +    Path media = touch("Title.m4a");
-+    Path ownVtt = touch("Title.en.vtt");
 +    Path ownBareVtt = touch("Title.vtt");
++    Path ownSrt = touch("Title.srt");
 +    Path ownJpg = touch("Title.jpg");
++    Path ownWebp = touch("Title.webp");
++    Path chapters = touch("Title.chapters.json");
++
++    episodeService.deleteFilesAfterRowRemoval("ep-1", media.toString());
++
++    assertFalse(Files.exists(media));
++    assertFalse(Files.exists(ownBareVtt));
++    assertFalse(Files.exists(ownSrt));
++    assertFalse(Files.exists(ownJpg));
++    assertFalse(Files.exists(ownWebp));
++    assertFalse(Files.exists(chapters));
++  }
++
++  @Test
++  void removalNeverTouchesFilesOfNamesThatOnlyStartWithTheBaseName() throws IOException {
++    Path media = touch("Title.m4a");
 +    Path otherMedia = touch("Title.Remix.m4a");
 +    Path otherVtt = touch("Title.Remix.en.vtt");
 +    Path otherVtt2 = touch("Title.Remix.vtt");
 +    Path otherJpg = touch("Title.Remix.jpg");
++    Path ptVtt = touch("Title.Pt.vtt");
++    Path enVtt = touch("Title.en.vtt");
++    Path enSrt = touch("Title.en.srt");
++    Path otherChapters = touch("Title.Remix.chapters.json");
++    Path hyphenSibling = touch("Title-2.m4a");
++    Path hyphenSiblingVtt = touch("Title-2.vtt");
 +
-+    episodeService.deleteSubtitleFiles(media.toString());
-+    episodeService.deleteThumbnailFiles(media.toString());
++    episodeService.deleteFilesAfterRowRemoval("ep-1", media.toString());
 +
-+    assertFalse(Files.exists(ownVtt));
-+    assertFalse(Files.exists(ownBareVtt));
-+    assertFalse(Files.exists(ownJpg));
-+    assertTrue(Files.exists(media), "the media file itself is not a sidecar");
-+    assertTrue(Files.exists(otherMedia));
-+    assertTrue(Files.exists(otherVtt));
-+    assertTrue(Files.exists(otherVtt2));
-+    assertTrue(Files.exists(otherJpg));
-+  }
-+
-+  @Test
-+  void languageSuffixedSubtitlesStillMatch() throws IOException {
-+    Path media = touch("Talk-abc123.m4a");
-+    Path en = touch("Talk-abc123.en.vtt");
-+    Path ptBr = touch("Talk-abc123.pt-BR.srt");
-+    Path zh = touch("Talk-abc123.zh-Hans.vtt");
-+    Path orig = touch("Talk-abc123.en-orig.vtt");
-+
-+    episodeService.deleteSubtitleFiles(media.toString());
-+
-+    assertFalse(Files.exists(en));
-+    assertFalse(Files.exists(ptBr));
-+    assertFalse(Files.exists(zh));
-+    assertFalse(Files.exists(orig));
-+  }
-+
-+  @Test
-+  void matchersRejectOtherVideosAndKeepOwnNames() {
-+    assertTrue(EpisodeService.isSubtitleSidecar("A.en.vtt", "A"));
-+    assertTrue(EpisodeService.isSubtitleSidecar("A.srt", "A"));
-+    assertFalse(EpisodeService.isSubtitleSidecar("A.Remix.en.vtt", "A"));
-+    assertFalse(EpisodeService.isSubtitleSidecar("A.Remix.vtt", "A"));
-+    assertFalse(EpisodeService.isSubtitleSidecar("A.Live.srt", "A"));
-+    assertFalse(EpisodeService.isSubtitleSidecar("AB.en.vtt", "A"));
-+    assertTrue(EpisodeService.isThumbnailSidecar("A.jpg", "A"));
-+    assertTrue(EpisodeService.isThumbnailSidecar("A.webp", "A"));
-+    assertFalse(EpisodeService.isThumbnailSidecar("A.Remix.jpg", "A"));
-+    assertFalse(EpisodeService.isThumbnailSidecar("A.en.png", "A"));
++    assertFalse(Files.exists(media));
++    for (Path kept : new Path[] {otherMedia, otherVtt, otherVtt2, otherJpg, ptVtt, enVtt, enSrt,
++        otherChapters, hyphenSibling, hyphenSiblingVtt}) {
++      assertTrue(Files.exists(kept), kept.getFileName() + " must be kept");
++    }
 +  }
 +}
 diff --git a/backend/src/test/java/top/asimov/pigeon/service/IndividualRemovalSqlTest.java b/backend/src/test/java/top/asimov/pigeon/service/IndividualRemovalSqlTest.java
