@@ -410,8 +410,8 @@ jobs:
           path: docs
       - name: Commit screenshots
         run: |
-          git config user.name "MtndaleRedneck"
-          git config user.email "117659952+MtndaleRedneck@users.noreply.github.com"
+          git config user.name "Maintainer"
+          git config user.email "maintainer@users.noreply.github.com"
           git add docs/screenshots docs/main.png
           git commit -m "Add app screenshots from emulator" || exit 0
           # Binary screenshots can't merge; when two runs race, the newest pixels win.
